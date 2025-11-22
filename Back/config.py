@@ -53,6 +53,10 @@ class Config(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        # Railway 환경변수도 읽도록 설정
+        env_file_required = False  # .env 파일이 없어도 환경변수에서 읽음
+        # 환경변수 우선순위: 환경변수 > .env 파일
+        env_prefix = ""  # 접두사 없음
     
     def get_admin_ids(self) -> List[int]:
         """
