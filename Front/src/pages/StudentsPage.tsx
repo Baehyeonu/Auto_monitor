@@ -20,7 +20,7 @@ export default function StudentsPage() {
   const [studentsTotal, setStudentsTotal] = useState(0)
   const [adminsTotal, setAdminsTotal] = useState(0)
 
-  const PER_PAGE = 10
+  const PER_PAGE = 7
 
   const loadStudents = async () => {
     setIsLoading(true)
@@ -172,19 +172,28 @@ function StudentDeletePanel({ students, onDelete, isLoading }: DeletePanelProps)
         <CardDescription>삭제할 학생을 선택 후 삭제 버튼을 눌러주세요.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <select
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-          value={selectedId}
-          onChange={(event) => setSelectedId(event.target.value ? Number(event.target.value) : '')}
-          disabled={isLoading}
-        >
-          <option value="">삭제할 학생 선택</option>
-          {students.map((student) => (
-            <option key={student.id} value={student.id}>
-              {student.zep_name} (ID: {student.id})
-            </option>
-          ))}
-        </select>
+        <div className="max-h-64 overflow-y-auto rounded-md border border-border/60">
+          <ul className="divide-y divide-border/60">
+            {students.map((student) => (
+              <li
+                key={student.id}
+                className={`flex justify-between px-3 py-2 text-sm ${selectedId === student.id ? 'bg-primary/10 text-primary-foreground' : 'hover:bg-muted/20'}`}
+              >
+                <div className="space-y-0.5">
+                  <p className="font-medium">{student.zep_name}</p>
+                  <p className="text-xs text-muted-foreground">ID: {student.id}</p>
+                </div>
+                <Button
+                  variant={selectedId === student.id ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedId(student.id)}
+                >
+                  선택
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
         <Button
           variant="destructive"
           className="w-full"
