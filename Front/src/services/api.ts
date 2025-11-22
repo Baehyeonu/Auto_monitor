@@ -5,7 +5,21 @@ interface RequestOptions extends RequestInit {
 }
 
 function buildUrl(path: string, params?: RequestOptions['params']) {
-  const url = new URL(path, API_BASE_URL)
+  let url: URL
+
+  const isAbsolute = /^https?:\/\//i.test(path)
+
+  if (isAbsolute) {
+    url = new URL(path)
+  } else if (API_BASE_URL) {
+    url = new URL(path, API_BASE_URL)
+  } else if (typeof window !== 'undefined') {
+    url = new URL(path, window.location.origin)
+  } else {
+    // SSR 대응: 기본값으로 상대 경로 반환
+    return path
+  }
+
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
