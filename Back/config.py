@@ -81,6 +81,22 @@ class Config(BaseSettings):
 # 전역 설정 인스턴스
 import os
 
+# Railway 환경변수 디버깅: 모든 환경변수 출력
+print("=" * 60)
+print("🔍 환경변수 디버깅 정보")
+print("=" * 60)
+print(f"현재 작업 디렉토리: {os.getcwd()}")
+print(f"Python 경로: {os.sys.executable}")
+print("\n모든 환경변수 목록 (DISCORD, SLACK 관련):")
+all_env_vars = {k: v for k, v in os.environ.items() if 'DISCORD' in k.upper() or 'SLACK' in k.upper()}
+if all_env_vars:
+    for key, value in all_env_vars.items():
+        print(f"  {key}: {'*' * min(len(value), 20)} (길이: {len(value)})")
+else:
+    print("  (DISCORD/SLACK 관련 환경변수 없음)")
+print("\n전체 환경변수 개수:", len(os.environ))
+print("=" * 60)
+
 # Railway 환경변수 직접 확인
 required_vars = ["DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
 missing_vars = []
@@ -102,6 +118,8 @@ if missing_vars:
         else:
             print(f"  ❌ {var}: (설정되지 않음)")
     print("\n💡 Railway 대시보드에서 환경변수를 확인하고 재배포하세요.")
+    print("💡 Railway Variables가 'Service Variables'로 설정되어 있는지 확인하세요.")
+    print("💡 Project Variables가 아닌 Service Variables를 사용해야 합니다.")
     print("=" * 60)
     raise ValueError(f"필수 환경변수가 설정되지 않았습니다: {', '.join(missing_vars)}")
 
