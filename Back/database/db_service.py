@@ -11,6 +11,16 @@ from .connection import AsyncSessionLocal
 from config import config
 
 
+def utcnow() -> datetime:
+    """UTC 기준 timezone-aware datetime"""
+    return datetime.now(timezone.utc)
+
+
+def to_naive(dt: datetime) -> datetime:
+    """DB 저장용 naive datetime으로 변환"""
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
 class DBService:
     """데이터베이스 서비스 클래스"""
     
@@ -31,7 +41,7 @@ class DBService:
                 zep_name=zep_name,
                 discord_id=discord_id,
                 is_cam_on=False,
-                last_status_change=datetime.now(timezone.utc)
+                last_status_change=to_naive(utcnow())
             )
             session.add(student)
             await session.commit()
@@ -105,8 +115,8 @@ class DBService:
             # 카메라 ON 시 알림 관련 필드 초기화
             update_values = {
                 "is_cam_on": is_cam_on,
-                "last_status_change": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc)
+                "last_status_change": to_naive(utcnow()),
+                "updated_at": to_naive(utcnow())
             }
             
             if is_cam_on:
@@ -139,7 +149,7 @@ class DBService:
             Student 리스트
         """
         async with AsyncSessionLocal() as session:
-            threshold_time = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
+            threshold_time = to_naive(utcnow() - timedelta(minutes=threshold_minutes))
             
             query = select(Student).where(
                 Student.is_cam_on == False,
@@ -180,7 +190,7 @@ class DBService:
                 return True
             
             last_alert_utc = student.last_alert_sent if student.last_alert_sent.tzinfo else student.last_alert_sent.replace(tzinfo=timezone.utc)
-            elapsed = datetime.now(timezone.utc) - last_alert_utc
+            elapsed = utcnow() - last_alert_utc
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
     @staticmethod
@@ -196,9 +206,9 @@ class DBService:
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
-                    last_alert_sent=datetime.now(timezone.utc),
+                    last_alert_sent=to_naive(utcnow()),
                     alert_count=Student.alert_count + 1,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -218,8 +228,8 @@ class DBService:
                 .where(Student.id == student_id)
                 .values(
                     response_status=action,
-                    response_time=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    response_time=to_naive(utcnow()),
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -236,14 +246,14 @@ class DBService:
             # 현재 시간에서 (ALERT_COOLDOWN - ABSENT_REMINDER_TIME) 만큼 빼서 설정
             # 이렇게 하면 ABSENT_REMINDER_TIME 후에 다시 알림이 가능해짐
             cooldown_offset = config.ALERT_COOLDOWN - config.ABSENT_REMINDER_TIME
-            reminder_time = datetime.now(timezone.utc) - timedelta(minutes=cooldown_offset)
+            reminder_time = to_naive(utcnow() - timedelta(minutes=cooldown_offset))
             
             await session.execute(
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
                     last_alert_sent=reminder_time,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -310,7 +320,7 @@ class DBService:
             초기화 시간 (datetime)
         """
         async with AsyncSessionLocal() as session:
-            now = datetime.now(timezone.utc)
+            now = utcnow()
             await session.execute(
                 update(Student)
                 .values(
@@ -347,7 +357,7 @@ class DBService:
             초기화 시간 (datetime)
         """
         async with AsyncSessionLocal() as session:
-            now = datetime.now(timezone.utc)
+            now = utcnow()
             
             # reset_time을 timezone-aware로 변환
             if reset_time.tzinfo is None:
@@ -416,7 +426,7 @@ class DBService:
                 .where(Student.is_cam_on == False)
                 .values(
                     last_status_change=reset_time,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -434,8 +444,8 @@ class DBService:
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
-                    last_leave_time=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    last_leave_time=to_naive(utcnow()),
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -452,7 +462,7 @@ class DBService:
             Student 리스트
         """
         async with AsyncSessionLocal() as session:
-            threshold_time = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
+            threshold_time = to_naive(utcnow() - timedelta(minutes=threshold_minutes))
             
             result = await session.execute(
                 select(Student)
@@ -492,7 +502,7 @@ class DBService:
                 return True
             
             last_absent_alert_utc = student.last_absent_alert if student.last_absent_alert.tzinfo else student.last_absent_alert.replace(tzinfo=timezone.utc)
-            elapsed = datetime.now(timezone.utc) - last_absent_alert_utc
+            elapsed = utcnow() - last_absent_alert_utc
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
     @staticmethod
@@ -507,7 +517,7 @@ class DBService:
         async with AsyncSessionLocal() as session:
             # 오늘 날짜의 끝 (내일 00:00)으로 설정하여 오늘 하루 동안 알림 안 보냄
             from datetime import timedelta
-            now = datetime.now(timezone.utc)
+            now = utcnow()
             tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             
             await session.execute(
@@ -517,7 +527,7 @@ class DBService:
                     is_absent=True,
                     absent_type=absent_type,
                     last_absent_alert=tomorrow,  # 내일 00:00으로 설정하여 오늘 하루 알림 안 보냄
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -542,7 +552,7 @@ class DBService:
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -560,8 +570,8 @@ class DBService:
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
-                    last_return_request_time=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    last_return_request_time=to_naive(utcnow()),
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -578,7 +588,7 @@ class DBService:
             Student 리스트
         """
         async with AsyncSessionLocal() as session:
-            threshold_time = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
+            threshold_time = to_naive(utcnow() - timedelta(minutes=threshold_minutes))
             
             result = await session.execute(
                 select(Student)
@@ -602,8 +612,8 @@ class DBService:
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
-                    last_absent_alert=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    last_absent_alert=to_naive(utcnow()),
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -637,7 +647,7 @@ class DBService:
                 return True
             
             last_leave_admin_alert_utc = student.last_leave_admin_alert if student.last_leave_admin_alert.tzinfo else student.last_leave_admin_alert.replace(tzinfo=timezone.utc)
-            elapsed = datetime.now(timezone.utc) - last_leave_admin_alert_utc
+            elapsed = utcnow() - last_leave_admin_alert_utc
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
     @staticmethod
@@ -653,8 +663,8 @@ class DBService:
                 update(Student)
                 .where(Student.id == student_id)
                 .values(
-                    last_leave_admin_alert=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
+                    last_leave_admin_alert=to_naive(utcnow()),
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
@@ -682,11 +692,11 @@ class DBService:
                 update(Student)
                 .values(
                     is_cam_on=False,
-                    last_status_change=datetime.now(timezone.utc),
+                    last_status_change=to_naive(utcnow()),
                     last_leave_time=None,
                     is_absent=False,
                     absent_type=None,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
