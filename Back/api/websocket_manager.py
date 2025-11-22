@@ -70,15 +70,16 @@ class ConnectionManager:
         if not self.dashboard_subscribers:
             return
         
-        disconnected = set()
-        for websocket in self.dashboard_subscribers:
+        async def send_to_client(websocket: WebSocket):
             try:
                 await websocket.send_json(message)
             except Exception:
-                disconnected.add(websocket)
+                self.disconnect(websocket)
         
-        for ws in disconnected:
-            self.disconnect(ws)
+        await asyncio.gather(
+            *[send_to_client(ws) for ws in self.dashboard_subscribers],
+            return_exceptions=True
+        )
     
     async def broadcast_student_status_changed(
         self, 

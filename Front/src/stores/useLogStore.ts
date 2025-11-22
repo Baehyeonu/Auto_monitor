@@ -69,11 +69,11 @@ export const useLogStore = create<LogState>()(
         ...initialState,
         filteredLogs: filterLogs(initialState.logs, initialState.filter),
         addLog: (log) => {
+          const entry: LogEntry = {
+            id: log.id ?? nanoid(),
+            ...log,
+          }
           set((state) => {
-            const entry: LogEntry = {
-              id: log.id ?? nanoid(),
-              ...log,
-            }
             const nextLogs = state.logs.length >= state.maxLogs
               ? [...state.logs.slice(1), entry]
               : [...state.logs, entry]
@@ -106,30 +106,14 @@ export const useLogStore = create<LogState>()(
           state.filteredLogs = filterLogs(state.logs, state.filter)
         }
       },
-      storage: {
-        getItem: (name) => {
-          try {
-            const value = localStorage.getItem(name)
-            return value ? JSON.parse(value) : null
-          } catch {
-            return null
-          }
-        },
-        setItem: (name, value) => {
-          try {
-            localStorage.setItem(name, JSON.stringify(value))
-          } catch {
-            // Ignore storage errors
-          }
-        },
-        removeItem: (name) => {
-          try {
-            localStorage.removeItem(name)
-          } catch {
-            // Ignore storage errors
-          }
-        },
-      },
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as any),
+        filteredLogs: filterLogs(
+          (persistedState as any)?.logs || [],
+          (persistedState as any)?.filter || currentState.filter
+        ),
+      }),
     }
   )
 )

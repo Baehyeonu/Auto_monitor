@@ -122,11 +122,13 @@ export function LogViewer() {
   useEffect(() => {
     const container = scrollContainerRef.current
     if (container && filteredLogs.length > 0) {
-      const shouldAutoScroll = 
-        container.scrollHeight - container.scrollTop - container.clientHeight < 100
-      if (shouldAutoScroll) {
-        container.scrollTop = container.scrollHeight
-      }
+      requestAnimationFrame(() => {
+        const shouldAutoScroll = 
+          container.scrollHeight - container.scrollTop - container.clientHeight < 100
+        if (shouldAutoScroll) {
+          container.scrollTop = container.scrollHeight
+        }
+      })
     }
   }, [filteredLogs.length])
 

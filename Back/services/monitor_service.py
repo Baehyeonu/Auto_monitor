@@ -577,15 +577,10 @@ class MonitorService:
     async def broadcast_dashboard_update_now(self):
         """대시보드 업데이트 즉시 브로드캐스트 (상태 변경 시 호출)"""
         try:
-            # 상태 변경이 발생했다는 것은 실제 활동이 있다는 의미이므로
-            # 모니터링 활성화 여부와 관계없이 항상 대시보드 업데이트
             overview = await self._get_dashboard_overview()
-            print(f"📊 대시보드 즉시 업데이트: {overview}")
             await manager.broadcast_dashboard_update(overview)
-        except Exception as e:
-            print(f"❌ 대시보드 즉시 업데이트 오류: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            pass
     
     async def _broadcast_dashboard_periodically(self):
         """5초마다 대시보드 현황 브로드캐스트"""
@@ -594,10 +589,9 @@ class MonitorService:
                 # 모니터링이 활성화된 경우에만 대시보드 업데이트
                 if self.is_monitoring_active():
                     overview = await self._get_dashboard_overview()
-                    print(f"📊 대시보드 주기적 업데이트: {overview}")
                     await manager.broadcast_dashboard_update(overview)
-            except Exception as e:
-                print(f"❌ 대시보드 브로드캐스트 오류: {e}")
+            except Exception:
+                pass
             
             await asyncio.sleep(5)  # 5초마다 업데이트 (실시간성 향상)
 
