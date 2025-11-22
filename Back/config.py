@@ -1,7 +1,7 @@
 """
 환경변수 설정 관리
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 
 
@@ -49,14 +49,15 @@ class Config(BaseSettings):
     # 데이터베이스
     DATABASE_URL: str = "sqlite+aiosqlite:///students.db"
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
-        # Railway 환경변수도 읽도록 설정
-        env_file_required = False  # .env 파일이 없어도 환경변수에서 읽음
-        # 환경변수 우선순위: 환경변수 > .env 파일
-        env_prefix = ""  # 접두사 없음
+    # pydantic-settings v2 설정 (Railway 환경변수만 사용)
+    model_config = SettingsConfigDict(
+        env_file=None,  # .env 파일 사용 안 함 (Railway 환경변수만 사용)
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        env_prefix="",  # 접두사 없음
+        # Railway 환경변수를 직접 읽도록 설정
+        extra="ignore",  # 추가 필드 무시
+    )
     
     def get_admin_ids(self) -> List[int]:
         """
