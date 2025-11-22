@@ -51,19 +51,16 @@ export function useRealtimeLogs() {
             total_students: number
             not_joined_today?: number
           }
-          console.log('📊 DASHBOARD_UPDATE received:', payload)
           const newStats = {
             total: payload.total_students,
             camera_on: payload.camera_on,
             camera_off: payload.camera_off,
-            user_join: payload.camera_on + payload.camera_off, // 현재 접속 중
-            user_leave: payload.left, // 접속 종료
+            user_join: payload.camera_on + payload.camera_off,
+            user_leave: payload.left,
             alerts_sent: payload.threshold_exceeded,
-            errors: 0, // 에러는 별도로 관리
+            errors: 0,
           }
-          console.log('📊 업데이트할 통계:', newStats)
           updateStats(newStats)
-          console.log('✅ 통계 업데이트 완료')
           break
         }
         case 'LOG':
@@ -96,9 +93,7 @@ export function useRealtimeLogs() {
           alerts_sent: data.threshold_exceeded,
         })
       })
-      .catch((error) => {
-        console.warn('Failed to fetch dashboard overview', error)
-      })
+      .catch(() => {})
   }, [updateStats])
 
   function createSystemLog(eventType: string, message: string): LogEntry {

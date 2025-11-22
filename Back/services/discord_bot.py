@@ -162,10 +162,8 @@ class DiscordBot(commands.Bot):
                 except discord.Forbidden:
                     await ctx.send("⚠️ DM을 보낼 수 없습니다. DM 설정을 확인해주세요.")
                 
-                print(f"✅ 새 학생 등록: {zep_name} (Discord: {discord_id})")
                 
             except Exception as e:
-                print(f"❌ 학생 등록 실패: {e}")
                 await ctx.send(f"❌ 등록 중 오류가 발생했습니다: {str(e)}")
         
         @self.command(name="status")
@@ -198,7 +196,6 @@ class DiscordBot(commands.Bot):
                 await ctx.send(embed=embed)
                 
             except Exception as e:
-                print(f"❌ 상태 조회 실패: {e}")
                 await ctx.send(f"❌ 상태 조회 중 오류가 발생했습니다.")
         
         @self.command(name="admin_register")
@@ -259,7 +256,6 @@ class DiscordBot(commands.Bot):
                     await ctx.send(f"⚠️ {user.mention}님에게 DM을 보낼 수 없습니다.")
                 
             except Exception as e:
-                print(f"❌ 관리자 등록 실패: {e}")
                 await ctx.send(f"❌ 등록 중 오류가 발생했습니다: {e}")
         
         @self.command(name="list_students")
@@ -301,7 +297,6 @@ class DiscordBot(commands.Bot):
                 await ctx.send(embed=embed)
                 
             except Exception as e:
-                print(f"❌ 학생 목록 조회 실패: {e}")
                 await ctx.send(f"❌ 목록 조회 중 오류가 발생했습니다.")
         
         @self.command(name="help")
@@ -596,14 +591,11 @@ class DiscordBot(commands.Bot):
                     f"💡 카메라를 켜주세요."
                 )
             
-            print(f"📤 알림 전송 성공: {student.zep_name} ({'첫 알림' if is_first_alert else '재알림'})")
             return True
             
         except discord.Forbidden:
-            print(f"❌ DM 전송 실패 (권한 없음): {student.zep_name}")
             return False
         except Exception as e:
-            print(f"❌ DM 전송 실패: {e}")
             return False
     
     async def _handle_button_response(self, interaction: discord.Interaction, action: str):
@@ -643,7 +635,6 @@ class DiscordBot(commands.Bot):
                     f"💡 10분 후에 카메라가 여전히 OFF 상태면 다시 알림을 받게 됩니다.",
                     ephemeral=True
                 )
-                print(f"📝 학생 중복 응답 무시: {student.zep_name}")
                 return
             
             # 응답 기록 (자리 비움 전용)
@@ -663,10 +654,8 @@ class DiscordBot(commands.Bot):
             # 강사 채널에 알림 (첫 번째 응답만)
             await self._notify_instructor(student, action)
             
-            print(f"📝 학생 응답 기록: {student.zep_name} - 자리 비움 (10분 후 재알림)")
             
         except Exception as e:
-            print(f"❌ 버튼 응답 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 응답 처리 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -701,7 +690,6 @@ class DiscordBot(commands.Bot):
                     f"💡 정상적으로 카메라가 켜져 있습니다. 계속 진행하세요!",
                     ephemeral=True
                 )
-                print(f"📷 {student.zep_name} - 카메라 확인: ON (정상)")
             else:
                 # 카메라가 여전히 꺼져 있음
                 await interaction.response.send_message(
@@ -711,10 +699,8 @@ class DiscordBot(commands.Bot):
                     f"💡 카메라를 켠 후 다시 이 버튼을 눌러 확인하세요.",
                     ephemeral=True
                 )
-                print(f"📷 {student.zep_name} - 카메라 확인: OFF (아직 꺼짐)")
         
         except Exception as e:
-            print(f"❌ 카메라 확인 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 카메라 상태 확인 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -729,14 +715,12 @@ class DiscordBot(commands.Bot):
             action: 응답 유형
         """
         if not config.INSTRUCTOR_CHANNEL_ID:
-            print("⚠️ 강사 채널 ID가 설정되지 않았습니다.")
             return
         
         try:
             channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
             
             if not channel:
-                print(f"❌ 강사 채널을 찾을 수 없습니다: {config.INSTRUCTOR_CHANNEL_ID}")
                 return
             
             action_text = "🚶 잠시 자리 비움"
@@ -758,10 +742,8 @@ class DiscordBot(commands.Bot):
             
             await channel.send(embed=embed)
             
-            print(f"📢 강사 채널 알림 전송: {student.zep_name} - {action}")
             
         except Exception as e:
-            print(f"❌ 강사 채널 알림 실패: {e}")
     
     async def send_camera_alert_to_admin(self, student):
         """
@@ -776,7 +758,6 @@ class DiscordBot(commands.Bot):
         try:
             channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
             if not channel:
-                print(f"❌ 강사 채널을 찾을 수 없습니다: {config.INSTRUCTOR_CHANNEL_ID}")
                 return
             
             # 경과 시간 계산
@@ -816,10 +797,8 @@ class DiscordBot(commands.Bot):
             view = AdminLeaveView(student.id)
             await channel.send(embed=embed, view=view)
             
-            print(f"📤 관리자 알림 전송: {student.zep_name} (카메라 OFF {elapsed_minutes}분 경과)")
             
         except Exception as e:
-            print(f"❌ 관리자 알림 전송 실패: {e}")
     
     async def send_leave_alert_to_admin(self, student):
         """
@@ -834,7 +813,6 @@ class DiscordBot(commands.Bot):
         try:
             channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
             if not channel:
-                print(f"❌ 강사 채널을 찾을 수 없습니다: {config.INSTRUCTOR_CHANNEL_ID}")
                 return
             
             # 경과 시간 계산
@@ -868,10 +846,8 @@ class DiscordBot(commands.Bot):
             view = AdminLeaveView(student.id)
             await channel.send(embed=embed, view=view)
             
-            print(f"📤 관리자 알림 전송: {student.zep_name} (접속 종료 {elapsed_minutes}분 경과)")
             
         except Exception as e:
-            print(f"❌ 관리자 알림 전송 실패: {e}")
     
     async def send_absent_alert(self, student) -> bool:
         """
@@ -918,14 +894,11 @@ class DiscordBot(commands.Bot):
             view = StudentAbsentView(student.id)
             await user.send(embed=embed, view=view)
             
-            print(f"📤 외출/조퇴 알림 전송: {student.zep_name} ({absent_type_text})")
             return True
             
         except discord.Forbidden:
-            print(f"❌ DM 전송 실패 (권한 없음): {student.zep_name}")
             return False
         except Exception as e:
-            print(f"❌ DM 전송 실패: {e}")
             return False
     
     async def _handle_admin_absent_response(self, interaction: discord.Interaction, custom_id: str):
@@ -969,10 +942,8 @@ class DiscordBot(commands.Bot):
                 ephemeral=True
             )
             
-            print(f"📝 관리자 응답: {student.zep_name} - {absent_type_text}")
             
         except Exception as e:
-            print(f"❌ 관리자 응답 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 응답 처리 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -1011,10 +982,8 @@ class DiscordBot(commands.Bot):
                 ephemeral=True
             )
             
-            print(f"📝 학생 응답: {student.zep_name} - {absent_type_text}")
             
         except Exception as e:
-            print(f"❌ 학생 응답 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 응답 처리 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -1088,7 +1057,6 @@ class DiscordBot(commands.Bot):
                     f"✅ {student.zep_name}님에게 확인 메시지를 전송했습니다.",
                     ephemeral=True
                 )
-                print(f"📤 관리자 요청: {student.zep_name}에게 확인 DM 전송")
             except discord.Forbidden:
                 await interaction.response.send_message(
                     f"❌ {student.zep_name}님에게 DM을 보낼 수 없습니다. (DM 차단 또는 친구 관계 필요)",
@@ -1096,7 +1064,6 @@ class DiscordBot(commands.Bot):
                 )
             
         except Exception as e:
-            print(f"❌ 수강생 확인 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 처리 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -1135,10 +1102,8 @@ class DiscordBot(commands.Bot):
                 ephemeral=True
             )
             
-            print(f"📝 학생 복귀 요청: {student.zep_name}")
             
         except Exception as e:
-            print(f"❌ 복귀 요청 처리 실패: {e}")
             await interaction.response.send_message(
                 "❌ 처리 중 오류가 발생했습니다.",
                 ephemeral=True
@@ -1182,14 +1147,11 @@ class DiscordBot(commands.Bot):
             view = StudentAbsentView(student.id)
             await user.send(embed=embed, view=view)
             
-            print(f"📤 복귀 재알림 전송: {student.zep_name}")
             return True
             
         except discord.Forbidden:
-            print(f"❌ DM 전송 실패 (권한 없음): {student.zep_name}")
             return False
         except Exception as e:
-            print(f"❌ DM 전송 실패: {e}")
             return False
 
 

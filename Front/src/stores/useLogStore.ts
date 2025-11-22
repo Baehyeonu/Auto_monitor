@@ -53,7 +53,6 @@ export const useLogStore = create<LogState>((set) => ({
   updateStats: (stats) =>
     set((state) => {
       const newStats = { ...state.stats, ...stats }
-      console.log('🔄 Zustand stats 업데이트:', { old: state.stats, new: newStats })
       return { stats: newStats }
     }),
   setConnectionState: (connected) => set({ isConnected: connected }),
