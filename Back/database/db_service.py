@@ -100,22 +100,31 @@ class DBService:
             return result.scalar_one_or_none()
     
     @staticmethod
-    async def update_camera_status(zep_name: str, is_cam_on: bool) -> bool:
+    async def update_camera_status(zep_name: str, is_cam_on: bool, status_change_time: Optional[datetime] = None) -> bool:
         """
         카메라 상태 업데이트
         
         Args:
             zep_name: ZEP 이름
             is_cam_on: 카메라 ON/OFF 상태
+            status_change_time: 상태 변경 시간 (None이면 현재 시간 사용, 히스토리 복원 시 메시지 타임스탬프 사용)
             
         Returns:
             업데이트 성공 여부
         """
         async with AsyncSessionLocal() as session:
+            # 상태 변경 시간 설정 (히스토리 복원 시 메시지 타임스탬프 사용)
+            if status_change_time is None:
+                status_change_time = utcnow()
+            else:
+                # 타임스탬프가 naive면 UTC로 가정
+                if status_change_time.tzinfo is None:
+                    status_change_time = status_change_time.replace(tzinfo=timezone.utc)
+            
             # 카메라 ON 시 알림 관련 필드 초기화
             update_values = {
                 "is_cam_on": is_cam_on,
-                "last_status_change": to_naive(utcnow()),
+                "last_status_change": to_naive(status_change_time),
                 "updated_at": to_naive(utcnow())
             }
             

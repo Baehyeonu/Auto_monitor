@@ -3,7 +3,8 @@ Slack Socket Mode 리스너
 ZEP로부터 Slack 채널에 전송된 메시지를 실시간으로 감지하고 파싱합니다.
 """
 import re
-from datetime import datetime, timedelta
+from typing import Optional
+from datetime import datetime, timedelta, timezone
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
@@ -160,13 +161,14 @@ class SlackListener:
                 await self._handle_user_join(zep_name_raw, zep_name)
                 return
     
-    async def _handle_camera_on(self, zep_name_raw: str, zep_name: str):
+    async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None):
         """
         카메라 ON 이벤트 처리
         
         Args:
             zep_name_raw: ZEP 원본 이름 (로그용, 예: "현우_조교", "주강사_유승수")
             zep_name: 추출된 이름 (DB 조회용, 예: "현우", "유승수")
+            message_timestamp: 메시지 타임스탬프 (히스토리 복원 시 사용, None이면 현재 시간)
         """
         current_time = datetime.now().strftime("%H:%M")
         if not self.is_restoring:
@@ -189,8 +191,8 @@ class SlackListener:
                     absent_type_text = "외출" if student.absent_type == "leave" else "조퇴"
                     print(f"   🏠 {zep_name_raw} 복귀 확인 ({absent_type_text} → 복귀)")
             
-            # 상태 업데이트 (알림 기록 초기화)
-            success = await self.db_service.update_camera_status(matched_name, True)
+            # 상태 업데이트 (알림 기록 초기화, 히스토리 복원 시 메시지 타임스탬프 사용)
+            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             if success and not self.is_restoring:
                 print(f"   ✅ {zep_name_raw} 카메라: ON (알림 초기화)")
                 
@@ -213,13 +215,14 @@ class SlackListener:
         elif not self.is_restoring:
             print(f"   ⚠️ {zep_name_raw}은(는) 등록되지 않은 학생입니다.")
     
-    async def _handle_camera_off(self, zep_name_raw: str, zep_name: str):
+    async def _handle_camera_off(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None):
         """
         카메라 OFF 이벤트 처리
         
         Args:
             zep_name_raw: ZEP 원본 이름 (로그용, 예: "현우_조교", "주강사_유승수")
             zep_name: 추출된 이름 (DB 조회용, 예: "현우", "유승수")
+            message_timestamp: 메시지 타임스탬프 (히스토리 복원 시 사용, None이면 현재 시간)
         """
         current_time = datetime.now().strftime("%H:%M")
         if not self.is_restoring:
@@ -235,8 +238,8 @@ class SlackListener:
                 break
         
         if student:
-            # 상태 업데이트
-            success = await self.db_service.update_camera_status(matched_name, False)
+            # 상태 업데이트 (히스토리 복원 시 메시지 타임스탬프 사용)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             if success and not self.is_restoring:
                 print(f"   ⚠️ {zep_name_raw} 카메라: OFF")
                 
@@ -259,13 +262,14 @@ class SlackListener:
         elif not self.is_restoring:
             print(f"   ⚠️ {zep_name_raw}은(는) 등록되지 않은 학생입니다.")
     
-    async def _handle_user_join(self, zep_name_raw: str, zep_name: str):
+    async def _handle_user_join(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None):
         """
         유저 입장/접속 이벤트 처리
         
         Args:
             zep_name_raw: ZEP 원본 이름 (로그용, 예: "현우_조교", "주강사_유승수")
             zep_name: 추출된 이름 (DB 조회용, 예: "현우", "유승수")
+            message_timestamp: 메시지 타임스탬프 (히스토리 복원 시 사용, None이면 현재 시간)
         """
         current_time = datetime.now().strftime("%H:%M")
         if not self.is_restoring:
@@ -291,8 +295,8 @@ class SlackListener:
             
             # 입장 시 외출/조퇴 상태 초기화
             await self.db_service.clear_absent_status(student.id)
-            # 입장 시 카메라 상태를 OFF로 설정 (ZEP 기본값)
-            await self.db_service.update_camera_status(matched_name, False)
+            # 입장 시 카메라 상태를 OFF로 설정 (ZEP 기본값, 히스토리 복원 시 메시지 타임스탬프 사용)
+            await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             if not self.is_restoring:
                 print(f"   ✅ {zep_name_raw} 입장 확인됨 (카메라: OFF)")
                 
@@ -313,13 +317,14 @@ class SlackListener:
         elif not self.is_restoring:
             print(f"   ⚠️ {zep_name_raw}은(는) 등록되지 않은 학생입니다.")
     
-    async def _handle_user_leave(self, zep_name_raw: str, zep_name: str):
+    async def _handle_user_leave(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None):
         """
         유저 퇴장/접속 종료 이벤트 처리
         
         Args:
             zep_name_raw: ZEP 원본 이름 (로그용, 예: "현우_조교", "주강사_유승수")
             zep_name: 추출된 이름 (DB 조회용, 예: "현우", "유승수")
+            message_timestamp: 메시지 타임스탬프 (히스토리 복원 시 사용, None이면 현재 시간)
         """
         current_time = datetime.now().strftime("%H:%M")
         if not self.is_restoring:
@@ -339,8 +344,8 @@ class SlackListener:
         if student:
             # 퇴장 시 접속 종료 시간 기록
             await self.db_service.record_user_leave(student.id)
-            # 퇴장 시 카메라 상태를 OFF로 설정 (20분 후 카메라 알림, 30분 후 접속 종료 알림)
-            success = await self.db_service.update_camera_status(matched_name, False)
+            # 퇴장 시 카메라 상태를 OFF로 설정 (20분 후 카메라 알림, 30분 후 접속 종료 알림, 히스토리 복원 시 메시지 타임스탬프 사용)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             if success and not self.is_restoring:
                 print(f"   ✅ {zep_name_raw} 퇴장 확인됨 (접속 종료 기록)")
                 
@@ -449,13 +454,16 @@ class SlackListener:
             # 각 메시지를 순서대로 처리 (실시간 처리와 동일한 순서)
             for message in messages:
                 text = message.get("text", "")
+                # Slack 메시지 타임스탬프를 datetime으로 변환 (Unix timestamp 초 단위)
+                message_ts = float(message.get("ts", 0))
+                message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
                 
                 # 카메라 ON 메시지
                 match_on = self.pattern_cam_on.search(text)
                 if match_on:
                     zep_name_raw = match_on.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_camera_on(zep_name_raw, zep_name)
+                    await self._handle_camera_on(zep_name_raw, zep_name, message_dt)
                     cam_on_count += 1
                     processed_count += 1
                     continue
@@ -465,7 +473,7 @@ class SlackListener:
                 if match_off:
                     zep_name_raw = match_off.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_camera_off(zep_name_raw, zep_name)
+                    await self._handle_camera_off(zep_name_raw, zep_name, message_dt)
                     cam_off_count += 1
                     processed_count += 1
                     continue
@@ -475,7 +483,7 @@ class SlackListener:
                 if match_leave:
                     zep_name_raw = match_leave.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_user_leave(zep_name_raw, zep_name)
+                    await self._handle_user_leave(zep_name_raw, zep_name, message_dt)
                     leave_count += 1
                     processed_count += 1
                     continue
@@ -485,7 +493,7 @@ class SlackListener:
                 if match_join:
                     zep_name_raw = match_join.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_user_join(zep_name_raw, zep_name)
+                    await self._handle_user_join(zep_name_raw, zep_name, message_dt)
                     join_count += 1
                     processed_count += 1
                     continue
