@@ -742,8 +742,8 @@ class DiscordBot(commands.Bot):
             
             await channel.send(embed=embed)
             
-            
-        except Exception as e:
+        except Exception:
+            pass
     
     async def send_camera_alert_to_admin(self, student):
         """
@@ -797,8 +797,8 @@ class DiscordBot(commands.Bot):
             view = AdminLeaveView(student.id)
             await channel.send(embed=embed, view=view)
             
-            
-        except Exception as e:
+        except Exception:
+            pass
     
     async def send_leave_alert_to_admin(self, student):
         """
@@ -846,8 +846,8 @@ class DiscordBot(commands.Bot):
             view = AdminLeaveView(student.id)
             await channel.send(embed=embed, view=view)
             
-            
-        except Exception as e:
+        except Exception:
+            pass
     
     async def send_absent_alert(self, student) -> bool:
         """
