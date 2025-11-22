@@ -74,5 +74,23 @@ class Config(BaseSettings):
 
 
 # 전역 설정 인스턴스
-config = Config()
+try:
+    config = Config()
+except Exception as e:
+    import os
+    print("=" * 60)
+    print("❌ 환경변수 로드 실패")
+    print("=" * 60)
+    print(f"오류: {e}")
+    print("\n현재 환경변수 상태:")
+    required_vars = ["DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
+    for var in required_vars:
+        value = os.getenv(var)
+        if value:
+            print(f"  ✅ {var}: {'*' * min(len(value), 10)} (설정됨)")
+        else:
+            print(f"  ❌ {var}: (설정되지 않음)")
+    print("\n💡 Railway 대시보드에서 환경변수를 확인하고 재배포하세요.")
+    print("=" * 60)
+    raise
 
