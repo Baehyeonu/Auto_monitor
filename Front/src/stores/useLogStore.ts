@@ -8,6 +8,7 @@ interface LogState {
   stats: LogStats
   isConnected: boolean
   maxLogs: number
+  filteredLogs: LogEntry[]
   addLog: (log: Omit<LogEntry, 'id'> & { id?: string }) => void
   clearLogs: () => void
   setFilter: (filter: LogFilter) => void
@@ -25,36 +26,66 @@ const initialStats: LogStats = {
   errors: 0,
 }
 
-export const useLogStore = create<LogState>((set) => ({
-  logs: [],
-  filter: {
-    levels: [],
-    sources: [],
-    event_types: [],
-    search: '',
-  },
-  stats: initialStats,
-  isConnected: false,
-  maxLogs: 1000,
-  addLog: (log) =>
-    set((state) => {
-      const entry: LogEntry = {
-        id: log.id ?? nanoid(),
-        ...log,
-      }
-      const nextLogs = [...state.logs, entry]
-      if (nextLogs.length > state.maxLogs) {
-        nextLogs.splice(0, nextLogs.length - state.maxLogs)
-      }
-      return { logs: nextLogs }
-    }),
-  clearLogs: () => set({ logs: [] }),
-  setFilter: (filter) => set({ filter }),
-  updateStats: (stats) =>
-    set((state) => {
-      const newStats = { ...state.stats, ...stats }
-      return { stats: newStats }
-    }),
-  setConnectionState: (connected) => set({ isConnected: connected }),
-}))
+const filterLogs = (logs: LogEntry[], filter: LogFilter): LogEntry[] => {
+  return logs.filter((log) => {
+    if (filter.levels.length > 0 && !filter.levels.includes(log.level)) {
+      return false
+    }
+    if (filter.sources.length > 0 && !filter.sources.includes(log.source)) {
+      return false
+    }
+    if (filter.event_types.length > 0 && !filter.event_types.includes(log.event_type)) {
+      return false
+    }
+    if (filter.search && !log.message.toLowerCase().includes(filter.search.toLowerCase()) &&
+        !log.student_name?.toLowerCase().includes(filter.search.toLowerCase())) {
+      return false
+    }
+    return true
+  })
+}
+
+export const useLogStore = create<LogState>((set, get) => {
+  const initialState = {
+    logs: [] as LogEntry[],
+    filter: {
+      levels: [],
+      sources: [],
+      event_types: [],
+      search: '',
+    },
+    stats: initialStats,
+    isConnected: false,
+    maxLogs: 500,
+  }
+  
+  return {
+    ...initialState,
+    filteredLogs: filterLogs(initialState.logs, initialState.filter),
+    addLog: (log) =>
+      set((state) => {
+        const entry: LogEntry = {
+          id: log.id ?? nanoid(),
+          ...log,
+        }
+        const nextLogs = state.logs.length >= state.maxLogs
+          ? [...state.logs.slice(1), entry]
+          : [...state.logs, entry]
+        const filteredLogs = filterLogs(nextLogs, state.filter)
+        return { logs: nextLogs, filteredLogs }
+      }),
+    clearLogs: () => set({ logs: [], filteredLogs: [] }),
+    setFilter: (filter) => {
+      const state = get()
+      const filteredLogs = filterLogs(state.logs, filter)
+      set({ filter, filteredLogs })
+    },
+    updateStats: (stats) =>
+      set((state) => {
+        const newStats = { ...state.stats, ...stats }
+        return { stats: newStats }
+      }),
+    setConnectionState: (connected) => set({ isConnected: connected }),
+  }
+})
 
