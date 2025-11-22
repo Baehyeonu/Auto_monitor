@@ -4,13 +4,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # package.json과 package-lock.json 복사
-COPY AutoMonitorFront/MonitorFront/zep_monitor/package*.json ./
+COPY package*.json ./
 
 # 의존성 설치
 RUN npm ci
 
 # 소스 코드 복사
-COPY AutoMonitorFront/MonitorFront/zep_monitor/ .
+COPY . .
 
 # 프로덕션 빌드
 RUN npm run build
@@ -22,7 +22,7 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # nginx 설정 파일 복사
-COPY AutoMonitorFront/MonitorFront/zep_monitor/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # 포트 노출
 EXPOSE 80

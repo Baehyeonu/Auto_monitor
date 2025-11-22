@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./Back
+      dockerfile: Dockerfile
+    container_name: auto_monitor_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Back/students.db:/app/students.db
+      - ./Back/.env:/app/.env
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///students.db
+    restart: unless-stopped
+    networks:
+      - monitor_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./Front
+      dockerfile: Dockerfile.frontend
+    container_name: auto_monitor_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - monitor_network
+
+networks:
+  monitor_network:
+    driver: bridge
+
