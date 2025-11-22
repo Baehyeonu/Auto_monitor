@@ -79,16 +79,22 @@ class Config(BaseSettings):
 
 
 # 전역 설정 인스턴스
-try:
-    config = Config()
-except Exception as e:
-    import os
+import os
+
+# Railway 환경변수 직접 확인
+required_vars = ["DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
+missing_vars = []
+for var in required_vars:
+    value = os.getenv(var)
+    if not value:
+        missing_vars.append(var)
+
+if missing_vars:
     print("=" * 60)
     print("❌ 환경변수 로드 실패")
     print("=" * 60)
-    print(f"오류: {e}")
+    print(f"누락된 환경변수: {', '.join(missing_vars)}")
     print("\n현재 환경변수 상태:")
-    required_vars = ["DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
     for var in required_vars:
         value = os.getenv(var)
         if value:
@@ -96,6 +102,17 @@ except Exception as e:
         else:
             print(f"  ❌ {var}: (설정되지 않음)")
     print("\n💡 Railway 대시보드에서 환경변수를 확인하고 재배포하세요.")
+    print("=" * 60)
+    raise ValueError(f"필수 환경변수가 설정되지 않았습니다: {', '.join(missing_vars)}")
+
+# 환경변수가 모두 있으면 Config 생성
+try:
+    config = Config()
+except Exception as e:
+    print("=" * 60)
+    print("❌ Config 초기화 실패")
+    print("=" * 60)
+    print(f"오류: {e}")
     print("=" * 60)
     raise
 
