@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone, date
 
 from config import config
 from database import DBService
+from services.admin_manager import admin_manager
 import re
 
 
@@ -49,13 +50,7 @@ class DiscordBot(commands.Bot):
         Returns:
             관리자 여부
         """
-        admin_ids = config.get_admin_ids()
-        
-        if not admin_ids:
-            # 관리자가 설정되지 않았으면 모두 관리자로 간주 (하위 호환성)
-            return True
-        
-        return user_id in admin_ids
+        return admin_manager.is_admin(user_id)
     
     def _extract_name_only(self, zep_name: str) -> str:
         """
@@ -91,6 +86,7 @@ class DiscordBot(commands.Bot):
         @self.event
         async def on_ready():
             """봇 준비 완료"""
+            await admin_manager.ensure_loaded()
             self.is_ready = True
             # 로그는 main.py에서 출력하므로 여기서는 출력하지 않음
         

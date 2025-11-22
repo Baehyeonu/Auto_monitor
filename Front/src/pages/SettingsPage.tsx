@@ -38,8 +38,8 @@ export default function SettingsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <DiscordSettings settings={settings} />
         <SlackSettings settings={settings} />
-        <ScheduleSettings settings={settings} />
-        <ScreenMonitorSettings settings={settings} />
+        <ScheduleSettings settings={settings} isSaving={isSaving} onSave={handleSave} />
+        <ScreenMonitorSettings settings={settings} isSaving={isSaving} onSave={handleSave} />
         <DatabaseSettings />
       </div>
     </div>

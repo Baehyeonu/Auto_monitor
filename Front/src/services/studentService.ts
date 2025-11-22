@@ -39,3 +39,13 @@ export async function deleteStudent(id: number) {
   )
 }
 
+export async function updateAdminStatus(id: number, isAdmin: boolean) {
+  return apiRequest(
+    `${API_ROUTES.students}/${id}/admin`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ is_admin: isAdmin }),
+    },
+  )
+}
+

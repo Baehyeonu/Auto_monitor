@@ -28,7 +28,7 @@ SQLITE_URL = f"sqlite+aiosqlite:///{SQLITE_DB_PATH}"
 POSTGRES_URL = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL")
 
 TABLES = ["students"]  # 현재 스키마는 학생 테이블만 존재
-BOOL_FIELDS = {"is_cam_on", "is_absent"}
+BOOL_FIELDS = {"is_cam_on", "is_absent", "is_admin"}
 DATETIME_FIELDS = {
     "last_status_change",
     "last_alert_sent",

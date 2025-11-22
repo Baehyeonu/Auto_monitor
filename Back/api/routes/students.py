@@ -5,9 +5,14 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query
 
 from database import DBService
-from api.schemas.student import StudentCreate, StudentUpdate, StudentResponse
+from api.schemas.student import (
+    StudentCreate,
+    StudentUpdate,
+    StudentResponse,
+    AdminStatusUpdate,
+)
 from api.schemas.response import PaginatedResponse
-from config import config
+from services.admin_manager import admin_manager
 
 
 router = APIRouter()
@@ -24,35 +29,14 @@ async def get_students(
 ):
     """학생 목록 조회"""
     students = await db_service.get_all_students()
-    admin_ids = config.get_admin_ids()
     
     # 관리자 구분 필터링 (문자열로 받아서 변환)
     is_admin_bool = None
     if is_admin is not None:
         is_admin_bool = is_admin.lower() in ('true', '1', 'yes')
     
-    # 디버깅: 관리자 ID 목록 출력
-    print(f"🔍 [API] is_admin 파라미터: {is_admin} -> {is_admin_bool}")
-    print(f"🔍 [API] 관리자 ID 목록: {admin_ids}")
-    print(f"🔍 [API] 전체 학생 수: {len(students)}")
-    
     if is_admin_bool is not None:
-        if is_admin_bool:
-            # 관리자만: Discord ID가 있고 관리자 목록에 포함된 경우
-            if admin_ids:
-                students = [s for s in students if s.discord_id is not None and s.discord_id in admin_ids]
-                print(f"🔍 [API] 관리자 필터링 후: {len(students)}명")
-            else:
-                # 관리자 목록이 비어있으면 관리자 없음
-                students = []
-        else:
-            # 학생만: Discord ID가 없거나, 있더라도 관리자 목록에 없는 경우
-            if admin_ids:
-                students = [s for s in students if s.discord_id is None or s.discord_id not in admin_ids]
-                print(f"🔍 [API] 학생 필터링 후: {len(students)}명")
-            else:
-                # 관리자 목록이 비어있으면 모든 학생이 학생으로 간주
-                pass  # students 그대로 사용
+        students = [s for s in students if s.is_admin == is_admin_bool]
     
     # 필터링 로직
     filtered_students = students
@@ -175,5 +159,20 @@ async def change_student_status(student_id: int, status: str):
     
     student = await db_service.get_student_by_id(student_id)
     return student
+
+
+@router.post("/{student_id}/admin", response_model=StudentResponse)
+async def update_admin_status(student_id: int, data: AdminStatusUpdate):
+    """학생의 관리자 권한을 설정"""
+    student = await db_service.get_student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    success = await db_service.set_admin_status(student_id, data.is_admin)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update admin status")
+
+    await admin_manager.refresh()
+    return await db_service.get_student_by_id(student_id)
 
 

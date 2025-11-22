@@ -737,3 +737,37 @@ class DBService:
             )
             await session.commit()
 
+    @staticmethod
+    async def get_admin_students() -> List[Student]:
+        """관리자 권한을 가진 학생 목록"""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Student).where(Student.is_admin == True)
+            )
+            return result.scalars().all()
+
+    @staticmethod
+    async def get_admin_ids() -> List[int]:
+        """관리자 Discord ID 목록"""
+        admins = await DBService.get_admin_students()
+        return [
+            student.discord_id
+            for student in admins
+            if student.discord_id is not None
+        ]
+
+    @staticmethod
+    async def set_admin_status(student_id: int, is_admin: bool) -> bool:
+        """학생의 관리자 권한 설정"""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .values(
+                    is_admin=is_admin,
+                    updated_at=to_naive(utcnow())
+                )
+            )
+            await session.commit()
+            return result.rowcount > 0
+

@@ -10,6 +10,7 @@ import uvicorn
 
 from config import config
 from database import init_db, DBService
+from services.admin_manager import admin_manager
 from services import SlackListener, DiscordBot, MonitorService
 from services.screen_monitor import ScreenMonitor
 from api.server import app
@@ -57,6 +58,7 @@ class ZepMonitoringSystem:
         print("📊 데이터베이스 초기화 중...")
         try:
             await init_db()
+            await admin_manager.refresh()
             print("✅ 데이터베이스 초기화 완료")
         except Exception as e:
             print(f"❌ 데이터베이스 초기화 실패: {e}")
@@ -259,7 +261,7 @@ class ZepMonitoringSystem:
     
     async def _print_admin_info(self):
         """관리자 정보 출력"""
-        admin_ids = config.get_admin_ids()
+        admin_ids = admin_manager.get_ids()
         if admin_ids:
             print(f"👑 관리자: {len(admin_ids)}명")
             for admin_id in admin_ids:

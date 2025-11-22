@@ -2,7 +2,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { SettingsResponse } from '@/types/settings'
 
-export function DiscordSettings({ settings }: { settings: SettingsResponse }) {
+interface Props {
+  settings: SettingsResponse
+}
+
+export function DiscordSettings({ settings }: Props) {
   return (
     <Card>
       <CardHeader>
@@ -19,8 +23,10 @@ export function DiscordSettings({ settings }: { settings: SettingsResponse }) {
           <span>관리자 등록 수</span>
           <span className="font-semibold">{settings.admin_count}명</span>
         </div>
+        <p className="text-xs text-muted-foreground pt-2 border-t border-border/60">
+          ⚠️ Discord 설정은 Railway 환경변수로 관리됩니다. 변경은 Railway 대시보드에서만 가능합니다.
+        </p>
       </CardContent>
     </Card>
   )
 }
-

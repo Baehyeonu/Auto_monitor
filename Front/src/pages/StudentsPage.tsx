@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { StudentForm } from '@/components/students/StudentForm'
 import { StudentList } from '@/components/students/StudentList'
 import { BulkImport } from '@/components/students/BulkImport'
+import { AdminRegistration } from '@/components/students/AdminRegistration'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { fetchStudents, createStudent, deleteStudent } from '@/services/studentService'
 import type { Student } from '@/types/student'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Trash2 } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
@@ -22,7 +25,7 @@ export default function StudentsPage() {
 
   const PER_PAGE = 7
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     setIsLoading(true)
     try {
       const [studentsData, adminsData] = await Promise.all([
@@ -38,11 +41,11 @@ export default function StudentsPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [adminPage, studentPage])
 
   useEffect(() => {
     loadStudents()
-  }, [studentPage, adminPage])
+  }, [loadStudents])
 
   const handleSubmit = async (values: {
     zep_name: string
@@ -74,25 +77,23 @@ export default function StudentsPage() {
       {
         value: 'delete',
         label: '학생 삭제',
-        content: (
-          <StudentDeletePanel students={students} onDelete={handleDelete} isLoading={isLoading} />
-        ),
+        content: <StudentDeletePanel onDelete={handleDelete} onUpdated={loadStudents} />,
       },
       {
         value: 'admin',
         label: '관리자 등록',
-        content: <AdminRegistrationPanel admins={admins} />,
+        content: <AdminRegistration onUpdated={loadStudents} />,
       },
     ],
-    [admins, handleDelete, handleSubmit, isLoading, isSubmitting, students],
+    [handleDelete, handleSubmit, isSubmitting, loadStudents, students],
   )
 
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'students' | 'admins')}>
         <TabsList>
-          <TabsTrigger value="students">학생 ({students.length})</TabsTrigger>
-          <TabsTrigger value="admins">관리자 ({admins.length})</TabsTrigger>
+          <TabsTrigger value="students">학생 ({studentsTotal})</TabsTrigger>
+          <TabsTrigger value="admins">관리자 ({adminsTotal})</TabsTrigger>
         </TabsList>
         <TabsContent value="students" className="mt-4 space-y-4">
           <StudentList
@@ -142,109 +143,203 @@ export default function StudentsPage() {
 }
 
 type DeletePanelProps = {
-  students: Student[]
   onDelete: (id: number) => Promise<void>
-  isLoading: boolean
+  onUpdated?: () => Promise<void> | void
 }
 
-function StudentDeletePanel({ students, onDelete, isLoading }: DeletePanelProps) {
-  const [selectedId, setSelectedId] = useState<number | ''>('')
+function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
+  const [allStudents, setAllStudents] = useState<Student[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [focusedIndex, setFocusedIndex] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  const loadAllStudents = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetchStudents({ limit: 100 })
+      setAllStudents(response.data)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAllStudents()
+  }, [loadAllStudents])
+
+  // 검색어에 따른 자동완성 필터링
+  const filteredSuggestions = useMemo(() => {
+    if (!searchTerm || searchTerm.trim().length === 0) {
+      return []
+    }
+    return allStudents.filter((student) =>
+      student.zep_name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [searchTerm, allStudents])
+
+  // 검색어나 필터링 결과가 변경될 때 자동완성 표시 여부 업데이트
+  useEffect(() => {
+    if (searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0) {
+      setShowSuggestions(true)
+    } else {
+      setShowSuggestions(false)
+    }
+  }, [searchTerm, filteredSuggestions.length])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearchTerm(value)
+    setFocusedIndex(-1)
+    // 검색어가 변경되면 선택 해제
+    const currentStudent = allStudents.find(s => s.id === selectedId)
+    if (!currentStudent || value !== currentStudent.zep_name) {
+      setSelectedId(null)
+    }
+  }
+
+  const handleSelectStudent = (student: Student) => {
+    setSearchTerm(student.zep_name)
+    setSelectedId(student.id)
+    setShowSuggestions(false)
+    setFocusedIndex(-1)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || filteredSuggestions.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setFocusedIndex((prev) =>
+        prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+      )
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setFocusedIndex((prev) => (prev > 0 ? prev - 1 : -1))
+    } else if (e.key === 'Enter' && focusedIndex >= 0) {
+      e.preventDefault()
+      handleSelectStudent(filteredSuggestions[focusedIndex])
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false)
+    }
+  }
 
   const handleDeleteClick = async () => {
     if (!selectedId) return
-    const student = students.find((s) => s.id === Number(selectedId))
+    const student = allStudents.find((s) => s.id === selectedId)
     if (!student) return
     if (!confirm(`${student.zep_name} 학생을 삭제하시겠습니까?`)) return
     setIsDeleting(true)
     try {
-      await onDelete(Number(selectedId))
-      setSelectedId('')
+      await onDelete(selectedId)
+      await loadAllStudents()
+      await onUpdated?.()
+      setSelectedId(null)
+      setSearchTerm('')
+    } catch (error) {
+      console.error('삭제 실패:', error)
+      alert('삭제에 실패했습니다.')
     } finally {
       setIsDeleting(false)
     }
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>학생 삭제</CardTitle>
-        <CardDescription>삭제할 학생을 선택 후 삭제 버튼을 눌러주세요.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="max-h-64 overflow-y-auto rounded-md border border-border/60">
-          <ul className="divide-y divide-border/60">
-            {students.map((student) => (
-              <li
-                key={student.id}
-                className={`flex justify-between px-3 py-2 text-sm ${selectedId === student.id ? 'bg-primary/10 text-primary-foreground' : 'hover:bg-muted/20'}`}
-              >
-                <div className="space-y-0.5">
-                  <p className="font-medium">{student.zep_name}</p>
-                  <p className="text-xs text-muted-foreground">ID: {student.id}</p>
-                </div>
-                <Button
-                  variant={selectedId === student.id ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedId(student.id)}
-                >
-                  선택
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <Button
-          variant="destructive"
-          className="w-full"
-          onClick={handleDeleteClick}
-          disabled={!selectedId || isDeleting}
-        >
-          {isDeleting ? '삭제 중...' : '학생 삭제'}
-        </Button>
-      </CardContent>
-    </Card>
-  )
-}
+  // 외부 클릭 시 자동완성 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node) &&
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false)
+      }
+    }
 
-function AdminRegistrationPanel({ admins }: { admins: Student[] }) {
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>관리자 등록</CardTitle>
-        <CardDescription>
-          관리자 권한은 환경변수 <code className="rounded bg-muted px-1">ADMIN_USER_IDS</code> 로 관리됩니다.
-        </CardDescription>
+        <CardTitle className="flex items-center gap-2">
+          <Trash2 className="h-5 w-5" />
+          학생 삭제
+        </CardTitle>
+        <CardDescription>이름으로 검색하여 학생을 선택하고 삭제할 수 있습니다.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Railway 대시보드 &gt; Variables 에서 <code>ADMIN_USER_IDS</code> 에 Discord ID를 추가하면 관리자 목록에
-          반영됩니다. 여러 명을 등록할 때는 쉼표로 구분하세요. (예: <code>1234567890,9876543210</code>)
-        </p>
-        <div className="rounded-lg border border-border/60 p-4">
-          <p className="text-sm font-semibold">현재 등록된 관리자</p>
-          {admins.length === 0 ? (
-            <p className="text-sm text-muted-foreground">등록된 관리자가 없습니다.</p>
-          ) : (
-            <ul className="mt-2 space-y-1 text-sm">
-              {admins.map((admin) => (
-                <li key={admin.id} className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-1.5">
-                  <span>{admin.zep_name}</span>
-                  {admin.discord_id && <span className="text-xs text-muted-foreground">ID: {admin.discord_id}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <Button variant="outline" asChild>
-          <a
-            href="https://railway.app"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Railway Variables 열기
-          </a>
-        </Button>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">학생 목록을 불러오는 중입니다...</p>
+        ) : (
+          <>
+            <div className="relative">
+              <Input
+                ref={inputRef}
+                placeholder="이름으로 검색..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                onKeyDown={handleKeyDown}
+                onFocus={() => {
+                  if (searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0) {
+                    setShowSuggestions(true)
+                  }
+                }}
+                className="w-full"
+              />
+              {showSuggestions && searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-[100] w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-auto"
+                  style={{ top: '100%' }}
+                >
+                  {filteredSuggestions.map((student, index) => (
+                    <div
+                      key={student.id}
+                      className={`px-3 py-2 cursor-pointer transition-colors ${
+                        index === focusedIndex
+                          ? 'bg-primary/10 text-primary-foreground'
+                          : 'hover:bg-muted/20'
+                      }`}
+                      onClick={() => handleSelectStudent(student)}
+                      onMouseEnter={() => setFocusedIndex(index)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{student.zep_name}</p>
+                          {student.discord_id && (
+                            <p className="text-xs text-muted-foreground">Discord: {student.discord_id}</p>
+                          )}
+                        </div>
+                        {selectedId === student.id && (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={handleDeleteClick}
+              disabled={!selectedId || isDeleting}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isDeleting ? '삭제 중...' : '학생 삭제'}
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   )

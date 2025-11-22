@@ -2,6 +2,7 @@ export interface Student {
   id: number
   zep_name: string
   discord_id?: number | null
+  is_admin: boolean
   is_cam_on: boolean
   last_status_change?: string | null
   last_leave_time?: string | null

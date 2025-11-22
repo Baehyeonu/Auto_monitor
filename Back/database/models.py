@@ -18,6 +18,9 @@ class Student(Base):
     zep_name = Column(String(100), unique=True, nullable=False, index=True)
     discord_id = Column(BigInteger, nullable=True)
     
+    # 권한
+    is_admin = Column(Boolean, default=False)
+    
     # 카메라 상태
     is_cam_on = Column(Boolean, default=False)
     last_status_change = Column(DateTime, default=datetime.utcnow)

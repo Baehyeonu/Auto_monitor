@@ -20,6 +20,7 @@ class StudentResponse(BaseModel):
     id: int
     zep_name: str
     discord_id: Optional[int]
+    is_admin: bool
     is_cam_on: bool
     last_status_change: Optional[datetime]
     last_alert_sent: Optional[datetime]
@@ -33,5 +34,9 @@ class StudentResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class AdminStatusUpdate(BaseModel):
+    is_admin: bool
 
 
