@@ -38,7 +38,11 @@ app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"]
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 
 # 프론트엔드 정적 파일 서빙 (프로덕션 빌드가 있는 경우)
-frontend_dist_path = Path(__file__).parent.parent.parent / "Front" / "dist"
+# Dockerfile에서 빌드된 프론트엔드는 Back/Front/dist에 복사됨
+frontend_dist_path = Path(__file__).parent.parent / "Front" / "dist"
+# 루트 기준 경로도 확인 (로컬 개발용)
+if not frontend_dist_path.exists():
+    frontend_dist_path = Path(__file__).parent.parent.parent / "Front" / "dist"
 if frontend_dist_path.exists():
     # 정적 파일 (JS, CSS, 이미지 등)
     app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
