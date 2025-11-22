@@ -17,31 +17,27 @@ export function useRealtimeLogs() {
             createSystemLog('system_start', '실시간 연결이 설정되었습니다.'),
           )
           break
-        case 'STUDENT_STATUS_CHANGED':
-          addLog(
-            createMonitorLog(
-              message.payload as {
-                student_id: number
-                zep_name: string
-                event_type: string
-                is_cam_on: boolean
-                elapsed_minutes?: number
-              },
-            ),
-          )
+        case 'STUDENT_STATUS_CHANGED': {
+          const payload = message.payload as {
+            student_id: number
+            zep_name: string
+            event_type: string
+            is_cam_on: boolean
+            elapsed_minutes?: number
+          }
+          addLog(createMonitorLog(payload))
           break
-        case 'NEW_ALERT':
-          addLog(
-            createAlertLog(
-              message.payload as {
-                student_id: number
-                zep_name: string
-                alert_type: string
-                alert_message: string
-              },
-            ),
-          )
+        }
+        case 'NEW_ALERT': {
+          const payload = message.payload as {
+            student_id: number
+            zep_name: string
+            alert_type: string
+            alert_message: string
+          }
+          addLog(createAlertLog(payload))
           break
+        }
         case 'DASHBOARD_UPDATE': {
           const payload = message.payload as {
             camera_on: number

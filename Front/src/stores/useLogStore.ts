@@ -68,7 +68,7 @@ export const useLogStore = create<LogState>()(
       return {
         ...initialState,
         filteredLogs: filterLogs(initialState.logs, initialState.filter),
-        addLog: (log) =>
+        addLog: (log) => {
           set((state) => {
             const entry: LogEntry = {
               id: log.id ?? nanoid(),
@@ -79,7 +79,8 @@ export const useLogStore = create<LogState>()(
               : [...state.logs, entry]
             const filteredLogs = filterLogs(nextLogs, state.filter)
             return { logs: nextLogs, filteredLogs }
-          }),
+          })
+        },
         clearLogs: () => set({ logs: [], filteredLogs: [] }),
         setFilter: (filter) => {
           const state = get()
@@ -104,6 +105,30 @@ export const useLogStore = create<LogState>()(
         if (state) {
           state.filteredLogs = filterLogs(state.logs, state.filter)
         }
+      },
+      storage: {
+        getItem: (name) => {
+          try {
+            const value = localStorage.getItem(name)
+            return value ? JSON.parse(value) : null
+          } catch {
+            return null
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value))
+          } catch {
+            // Ignore storage errors
+          }
+        },
+        removeItem: (name) => {
+          try {
+            localStorage.removeItem(name)
+          } catch {
+            // Ignore storage errors
+          }
+        },
       },
     }
   )

@@ -20,7 +20,6 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.add(websocket)
         
-        # 연결 성공 메시지 전송
         await self.send_personal_message(websocket, {
             "type": "CONNECTED",
             "payload": {
@@ -29,13 +28,11 @@ class ConnectionManager:
             },
             "timestamp": datetime.now().isoformat()
         })
-        print(f"🔌 WebSocket 연결: {id(websocket)} (총 {len(self.active_connections)}개)")
     
     def disconnect(self, websocket: WebSocket):
         """연결 해제"""
         self.active_connections.discard(websocket)
         self.dashboard_subscribers.discard(websocket)
-        print(f"🔌 WebSocket 연결 해제: {id(websocket)} (총 {len(self.active_connections)}개)")
     
     async def handle_message(self, websocket: WebSocket, data: dict):
         """클라이언트 메시지 처리"""
@@ -43,11 +40,9 @@ class ConnectionManager:
         
         if msg_type == "SUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.add(websocket)
-            print(f"📊 대시보드 구독: {id(websocket)}")
         
         elif msg_type == "UNSUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.discard(websocket)
-            print(f"📊 대시보드 구독 해제: {id(websocket)}")
         
         elif msg_type == "PING":
             await self.send_personal_message(websocket, {
@@ -62,35 +57,28 @@ class ConnectionManager:
             student_id = payload.get("student_id")
             status = payload.get("status")
             # TODO: DB 업데이트 로직 연결
-            print(f"👤 상태 변경 요청: student_id={student_id}, status={status}")
     
     async def send_personal_message(self, websocket: WebSocket, message: dict):
         """특정 클라이언트에게 메시지 전송"""
         try:
             await websocket.send_json(message)
-        except Exception as e:
-            print(f"메시지 전송 실패: {e}")
+        except Exception:
             self.disconnect(websocket)
     
     async def broadcast_to_dashboard(self, message: dict):
         """대시보드 구독자들에게 브로드캐스트"""
         if not self.dashboard_subscribers:
-            print(f"⚠️ 대시보드 구독자가 없습니다. 메시지 타입: {message.get('type')}")
             return
         
         disconnected = set()
         for websocket in self.dashboard_subscribers:
             try:
                 await websocket.send_json(message)
-            except Exception as e:
-                print(f"❌ WebSocket 메시지 전송 실패: {e}")
+            except Exception:
                 disconnected.add(websocket)
         
-        # 연결 해제된 클라이언트 정리
         for ws in disconnected:
             self.disconnect(ws)
-        
-        print(f"✅ 대시보드 브로드캐스트 완료: {len(self.dashboard_subscribers)}명에게 전송 (타입: {message.get('type')})")
     
     async def broadcast_student_status_changed(
         self, 

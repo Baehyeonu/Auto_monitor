@@ -100,7 +100,6 @@ export default function StudentsPage() {
             students={students}
             isLoading={isLoading}
             onRefresh={loadStudents}
-            onDelete={handleDelete}
             pagination={{
               page: studentPage,
               total: studentsTotal,
@@ -128,7 +127,6 @@ export default function StudentsPage() {
             students={admins}
             isLoading={isLoading}
             onRefresh={loadStudents}
-            onDelete={handleDelete}
             pagination={{
               page: adminPage,
               total: adminsTotal,
