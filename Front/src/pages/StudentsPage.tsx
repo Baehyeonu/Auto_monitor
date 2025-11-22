@@ -15,16 +15,24 @@ export default function StudentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students')
   const [actionTab, setActionTab] = useState<'create' | 'bulk' | 'delete' | 'admin'>('create')
+  const [studentPage, setStudentPage] = useState(1)
+  const [adminPage, setAdminPage] = useState(1)
+  const [studentsTotal, setStudentsTotal] = useState(0)
+  const [adminsTotal, setAdminsTotal] = useState(0)
+
+  const PER_PAGE = 10
 
   const loadStudents = async () => {
     setIsLoading(true)
     try {
       const [studentsData, adminsData] = await Promise.all([
-        fetchStudents({ limit: 100, is_admin: false }),
-        fetchStudents({ limit: 100, is_admin: true }),
+        fetchStudents({ page: studentPage, limit: PER_PAGE, is_admin: false }),
+        fetchStudents({ page: adminPage, limit: PER_PAGE, is_admin: true }),
       ])
       setStudents(studentsData.data)
+      setStudentsTotal(studentsData.total)
       setAdmins(adminsData.data)
+      setAdminsTotal(adminsData.total)
     } catch (error) {
       console.error(error)
     } finally {
@@ -34,7 +42,7 @@ export default function StudentsPage() {
 
   useEffect(() => {
     loadStudents()
-  }, [])
+  }, [studentPage, adminPage])
 
   const handleSubmit = async (values: {
     zep_name: string
@@ -92,6 +100,12 @@ export default function StudentsPage() {
             isLoading={isLoading}
             onRefresh={loadStudents}
             onDelete={handleDelete}
+            pagination={{
+              page: studentPage,
+              total: studentsTotal,
+              limit: PER_PAGE,
+              onPageChange: setStudentPage,
+            }}
           />
           <Tabs value={actionTab} onValueChange={(v) => setActionTab(v as typeof actionTab)} className="space-y-4">
             <TabsList className="grid w-full grid-cols-2 gap-2 md:grid-cols-4">
@@ -114,6 +128,12 @@ export default function StudentsPage() {
             isLoading={isLoading}
             onRefresh={loadStudents}
             onDelete={handleDelete}
+            pagination={{
+              page: adminPage,
+              total: adminsTotal,
+              limit: PER_PAGE,
+              onPageChange: setAdminPage,
+            }}
           />
         </TabsContent>
       </Tabs>
