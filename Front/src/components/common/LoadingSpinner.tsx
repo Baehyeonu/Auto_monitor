@@ -1,0 +1,9 @@
+export function LoadingSpinner({ label }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      {label && <span className="text-sm">{label}</span>}
+    </div>
+  )
+}
+
