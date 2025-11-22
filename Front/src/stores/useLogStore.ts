@@ -1,6 +1,10 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
 import type { LogEntry, LogFilter, LogStats } from '@/types/log'
+
+const STORAGE_KEY = 'zep-monitor-logs'
+const MAX_STORED_LOGS = 500
 
 interface LogState {
   logs: LogEntry[]
@@ -45,47 +49,63 @@ const filterLogs = (logs: LogEntry[], filter: LogFilter): LogEntry[] => {
   })
 }
 
-export const useLogStore = create<LogState>((set, get) => {
-  const initialState = {
-    logs: [] as LogEntry[],
-    filter: {
-      levels: [],
-      sources: [],
-      event_types: [],
-      search: '',
+export const useLogStore = create<LogState>()(
+  persist(
+    (set, get) => {
+      const initialState = {
+        logs: [] as LogEntry[],
+        filter: {
+          levels: [],
+          sources: [],
+          event_types: [],
+          search: '',
+        },
+        stats: initialStats,
+        isConnected: false,
+        maxLogs: MAX_STORED_LOGS,
+      }
+      
+      return {
+        ...initialState,
+        filteredLogs: filterLogs(initialState.logs, initialState.filter),
+        addLog: (log) =>
+          set((state) => {
+            const entry: LogEntry = {
+              id: log.id ?? nanoid(),
+              ...log,
+            }
+            const nextLogs = state.logs.length >= state.maxLogs
+              ? [...state.logs.slice(1), entry]
+              : [...state.logs, entry]
+            const filteredLogs = filterLogs(nextLogs, state.filter)
+            return { logs: nextLogs, filteredLogs }
+          }),
+        clearLogs: () => set({ logs: [], filteredLogs: [] }),
+        setFilter: (filter) => {
+          const state = get()
+          const filteredLogs = filterLogs(state.logs, filter)
+          set({ filter, filteredLogs })
+        },
+        updateStats: (stats) =>
+          set((state) => {
+            const newStats = { ...state.stats, ...stats }
+            return { stats: newStats }
+          }),
+        setConnectionState: (connected) => set({ isConnected: connected }),
+      }
     },
-    stats: initialStats,
-    isConnected: false,
-    maxLogs: 500,
-  }
-  
-  return {
-    ...initialState,
-    filteredLogs: filterLogs(initialState.logs, initialState.filter),
-    addLog: (log) =>
-      set((state) => {
-        const entry: LogEntry = {
-          id: log.id ?? nanoid(),
-          ...log,
+    {
+      name: STORAGE_KEY,
+      partialize: (state) => ({
+        logs: state.logs.slice(-MAX_STORED_LOGS),
+        filter: state.filter,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.filteredLogs = filterLogs(state.logs, state.filter)
         }
-        const nextLogs = state.logs.length >= state.maxLogs
-          ? [...state.logs.slice(1), entry]
-          : [...state.logs, entry]
-        const filteredLogs = filterLogs(nextLogs, state.filter)
-        return { logs: nextLogs, filteredLogs }
-      }),
-    clearLogs: () => set({ logs: [], filteredLogs: [] }),
-    setFilter: (filter) => {
-      const state = get()
-      const filteredLogs = filterLogs(state.logs, filter)
-      set({ filter, filteredLogs })
-    },
-    updateStats: (stats) =>
-      set((state) => {
-        const newStats = { ...state.stats, ...stats }
-        return { stats: newStats }
-      }),
-    setConnectionState: (connected) => set({ isConnected: connected }),
-  }
-})
+      },
+    }
+  )
+)
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectionStatus } from '@/components/logs/ConnectionStatus'
 
 interface HeaderProps {
@@ -6,14 +6,25 @@ interface HeaderProps {
 }
 
 export function Header({ isConnected }: HeaderProps) {
-  const today = useMemo(
-    () =>
-      new Intl.DateTimeFormat('ko-KR', {
-        dateStyle: 'full',
-        timeStyle: 'short',
-      }).format(new Date()),
-    [],
+  const [currentTime, setCurrentTime] = useState(() =>
+    new Intl.DateTimeFormat('ko-KR', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    }).format(new Date())
   )
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(
+        new Intl.DateTimeFormat('ko-KR', {
+          dateStyle: 'full',
+          timeStyle: 'short',
+        }).format(new Date())
+      )
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <header className="glass-panel flex items-center justify-between border border-border/60 px-6 py-4">
@@ -25,7 +36,7 @@ export function Header({ isConnected }: HeaderProps) {
       </div>
       <div className="flex flex-col items-end gap-2 text-right text-sm text-muted-foreground">
         <ConnectionStatus isConnected={isConnected} />
-        <span>{today}</span>
+        <span>{currentTime}</span>
       </div>
     </header>
   )
