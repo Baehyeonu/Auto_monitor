@@ -338,7 +338,7 @@ class DBService:
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
-                    updated_at=now
+                    updated_at=to_naive(now)
                 )
             )
             await session.commit()
@@ -403,7 +403,7 @@ class DBService:
                         last_absent_alert=None,
                         last_leave_admin_alert=None,
                         last_return_request_time=None,
-                        updated_at=now
+                        updated_at=to_naive(now)
                     )
                 )
                 await session.commit()
@@ -732,7 +732,7 @@ class DBService:
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
-                    updated_at=datetime.now(timezone.utc)
+                    updated_at=to_naive(utcnow())
                 )
             )
             await session.commit()
