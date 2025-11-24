@@ -11,12 +11,15 @@ const getApiBaseUrl = () => {
 const getWsUrl = () => {
   const envUrl = import.meta.env.VITE_WS_URL
   if (envUrl) return envUrl
-  // 프로덕션에서는 상대 경로 사용
+  
+  // 프로덕션에서는 상대 경로 사용 (같은 서버에서 서빙)
   if (import.meta.env.PROD) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${window.location.host}/ws`
+    const host = window.location.host // hostname:port 또는 hostname
+    return `${protocol}//${host}/ws`
   }
-  // 개발 모드에서는 localhost 사용
+  
+  // 개발 모드에서는 localhost:8000 사용
   return 'ws://localhost:8000/ws'
 }
 
