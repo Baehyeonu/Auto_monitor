@@ -200,15 +200,7 @@ class MonitorService:
         
         if not is_class_time:
             # 수업 시간이 아니면 모든 알림 중단
-            try:
-                class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-                class_start_obj = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
-                if current_time_obj > class_end_obj:
-                    print(f"🚫 [차단] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - 모든 알림 중단")
-                elif current_time_obj < class_start_obj:
-                    print(f"🚫 [차단] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - 모든 알림 중단")
-            except Exception as e:
-                print(f"⚠️ [차단] 시간 파싱 오류: {e}")
+            print(f"🚫 [차단] 수업 시간이 아님 - 모든 알림 중단 (현재: {current_time}, 수업: {config.CLASS_START_TIME} ~ {config.CLASS_END_TIME}, 점심: {config.LUNCH_START_TIME} ~ {config.LUNCH_END_TIME})")
             return
         
         # 점심 시간 시작/종료 체크 및 시간 초기화
