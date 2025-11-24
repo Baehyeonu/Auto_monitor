@@ -76,9 +76,7 @@ class MonitorService:
         
         while self.is_running:
             try:
-                print(f"🔄 [모니터링] _check_students() 호출 시작")
                 await self._check_students()
-                print(f"✅ [모니터링] _check_students() 완료, {self.check_interval}초 대기...")
                 await asyncio.sleep(self.check_interval)
             except Exception as e:
                 print(f"❌ 모니터링 체크 중 오류: {e}")
@@ -153,21 +151,18 @@ class MonitorService:
         
         # 수업 시작 전이면 False
         if current_time < class_start:
-            print(f"⏰ [_is_class_time] 수업 시작 전 ({current_time_str} < {config.CLASS_START_TIME}) - False")
             return False
         
         # 수업 종료 후면 False
         if current_time > class_end:
-            print(f"⏰ [_is_class_time] 수업 종료 후 ({current_time_str} > {config.CLASS_END_TIME}) - False")
+            print(f"⏰ 수업 종료 시간 이후 ({current_time_str} > {config.CLASS_END_TIME}) - 알림 차단")
             return False
         
         # 점심 시간이면 False
         if lunch_start <= current_time <= lunch_end:
-            print(f"⏰ [_is_class_time] 점심 시간 ({current_time_str}) - False")
             return False
         
         # 위 조건을 모두 통과하면 수업 시간
-        print(f"✅ [_is_class_time] 수업 시간 ({current_time_str}) - True")
         return True
     
     async def _check_students(self):
@@ -176,31 +171,23 @@ class MonitorService:
         current_time = now.strftime("%H:%M")
         current_time_obj = now.time()
         
-        print(f"🔍 [체크 시작] 현재 시간: {current_time}, 수업 시간: {config.CLASS_START_TIME} ~ {config.CLASS_END_TIME}")
-        
         # 일일 초기화 체크 (워밍업 여부와 관계없이 실행)
         await self._check_daily_reset(now)
         
         # 모니터링 활성화 여부 체크 (주말/공휴일, 수동 일시정지)
         if not self.is_monitoring_active():
-            print(f"⏸️ [체크] 모니터링 비활성화 - 스킵")
             return
         
         # 워밍업 시간 체크 (프로그램 시작 직후 알림 방지)
         if self.start_time:
             elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
-                print(f"⏳ [체크] 워밍업 시간 중 ({elapsed:.1f}분 < {self.warmup_minutes}분) - 스킵")
                 return
         
         # 수업 시간 체크 (가장 먼저 체크 - 수업 시간이 아니면 모든 알림 중단)
-        print(f"🔍 [수업 시간 체크] _is_class_time() 호출 전")
         is_class_time = self._is_class_time()
-        print(f"🔍 [수업 시간 체크] _is_class_time() 결과: {is_class_time}")
-        
         if not is_class_time:
-            # 수업 시간이 아니면 모든 알림 중단
-            print(f"🚫 [차단] 수업 시간이 아님 - 모든 알림 중단 (현재: {current_time}, 수업: {config.CLASS_START_TIME} ~ {config.CLASS_END_TIME}, 점심: {config.LUNCH_START_TIME} ~ {config.LUNCH_END_TIME})")
+            # 수업 시간이 아니면 모든 알림 중단 (로그는 _is_class_time()에서 출력)
             return
         
         # 점심 시간 시작/종료 체크 및 시간 초기화

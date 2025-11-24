@@ -13,6 +13,7 @@ services:
       - ./Back/.env:/app/.env
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///students.db
+      - TZ=Asia/Seoul
     restart: unless-stopped
     networks:
       - monitor_network

@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+# 타임존 설정 (한국 시간)
+ENV TZ=Asia/Seoul
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # 작업 디렉토리 설정
 WORKDIR /app
 
