@@ -163,32 +163,35 @@ class MonitorService:
     
     async def _check_students(self):
         """학생들의 카메라 상태 체크"""
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+        current_time_obj = now.time()
+        
+        # 디버깅: 수업 종료 시간 이후인지 먼저 체크 (항상 출력)
+        try:
+            class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
+            class_start_obj = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+            if current_time_obj > class_end_obj:
+                print(f"⏰ [체크] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - _check_students() 실행됨")
+            elif current_time_obj < class_start_obj:
+                print(f"⏰ [체크] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - _check_students() 실행됨")
+        except Exception as e:
+            print(f"⚠️ [체크] 시간 파싱 오류: {e}")
+        
         # 일일 초기화 체크 (워밍업 여부와 관계없이 실행)
-        await self._check_daily_reset(datetime.now())
+        await self._check_daily_reset(now)
         
         # 모니터링 활성화 여부 체크 (주말/공휴일, 수동 일시정지)
         if not self.is_monitoring_active():
-            # 조용히 스킵 (로그 안 남김)
+            print(f"⏸️ [체크] 모니터링 비활성화 - 스킵")
             return
         
         # 워밍업 시간 체크 (프로그램 시작 직후 알림 방지)
         if self.start_time:
             elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
-                # 조용히 스킵 (로그 안 남김)
+                print(f"⏳ [체크] 워밍업 시간 중 ({elapsed:.1f}분 < {self.warmup_minutes}분) - 스킵")
                 return
-        current_time_obj = now.time()
-        
-        # 디버깅: 수업 종료 시간 이후인지 먼저 체크
-        try:
-            class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            if current_time_obj > class_end_obj:
-                print(f"⏰ [디버깅] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - _check_students() 실행 중")
-        except Exception:
-            pass
-        
-        now = datetime.now()
-        current_time = now.strftime("%H:%M")
         
         # 점심 시간 시작/종료 체크 및 시간 초기화
         is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
