@@ -176,16 +176,7 @@ class MonitorService:
         current_time = now.strftime("%H:%M")
         current_time_obj = now.time()
         
-        # 디버깅: 수업 종료 시간 이후인지 먼저 체크 (항상 출력)
-        try:
-            class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            class_start_obj = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
-            if current_time_obj > class_end_obj:
-                print(f"⏰ [체크] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - _check_students() 실행됨")
-            elif current_time_obj < class_start_obj:
-                print(f"⏰ [체크] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - _check_students() 실행됨")
-        except Exception as e:
-            print(f"⚠️ [체크] 시간 파싱 오류: {e}")
+        print(f"🔍 [체크 시작] 현재 시간: {current_time}, 수업 시간: {config.CLASS_START_TIME} ~ {config.CLASS_END_TIME}")
         
         # 일일 초기화 체크 (워밍업 여부와 관계없이 실행)
         await self._check_daily_reset(now)
@@ -203,18 +194,21 @@ class MonitorService:
                 return
         
         # 수업 시간 체크 (가장 먼저 체크 - 수업 시간이 아니면 모든 알림 중단)
+        print(f"🔍 [수업 시간 체크] _is_class_time() 호출 전")
         is_class_time = self._is_class_time()
+        print(f"🔍 [수업 시간 체크] _is_class_time() 결과: {is_class_time}")
+        
         if not is_class_time:
             # 수업 시간이 아니면 모든 알림 중단
             try:
                 class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
                 class_start_obj = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
                 if current_time_obj > class_end_obj:
-                    print(f"⏰ [차단] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - 모든 알림 중단")
+                    print(f"🚫 [차단] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - 모든 알림 중단")
                 elif current_time_obj < class_start_obj:
-                    print(f"⏰ [차단] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - 모든 알림 중단")
-            except Exception:
-                pass
+                    print(f"🚫 [차단] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - 모든 알림 중단")
+            except Exception as e:
+                print(f"⚠️ [차단] 시간 파싱 오류: {e}")
             return
         
         # 점심 시간 시작/종료 체크 및 시간 초기화
