@@ -138,6 +138,7 @@ class MonitorService:
         """
         now = datetime.now()
         current_time = now.time()
+        current_time_str = now.strftime("%H:%M")
         
         # 수업 시작/종료 시간 파싱
         try:
@@ -152,17 +153,21 @@ class MonitorService:
         
         # 수업 시작 전이면 False
         if current_time < class_start:
+            print(f"⏰ [_is_class_time] 수업 시작 전 ({current_time_str} < {config.CLASS_START_TIME}) - False")
             return False
         
         # 수업 종료 후면 False
         if current_time > class_end:
+            print(f"⏰ [_is_class_time] 수업 종료 후 ({current_time_str} > {config.CLASS_END_TIME}) - False")
             return False
         
         # 점심 시간이면 False
         if lunch_start <= current_time <= lunch_end:
+            print(f"⏰ [_is_class_time] 점심 시간 ({current_time_str}) - False")
             return False
         
         # 위 조건을 모두 통과하면 수업 시간
+        print(f"✅ [_is_class_time] 수업 시간 ({current_time_str}) - True")
         return True
     
     async def _check_students(self):
@@ -197,6 +202,21 @@ class MonitorService:
                 print(f"⏳ [체크] 워밍업 시간 중 ({elapsed:.1f}분 < {self.warmup_minutes}분) - 스킵")
                 return
         
+        # 수업 시간 체크 (가장 먼저 체크 - 수업 시간이 아니면 모든 알림 중단)
+        is_class_time = self._is_class_time()
+        if not is_class_time:
+            # 수업 시간이 아니면 모든 알림 중단
+            try:
+                class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
+                class_start_obj = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+                if current_time_obj > class_end_obj:
+                    print(f"⏰ [차단] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - 모든 알림 중단")
+                elif current_time_obj < class_start_obj:
+                    print(f"⏰ [차단] 수업 시작 시간 전 ({current_time} < {config.CLASS_START_TIME}) - 모든 알림 중단")
+            except Exception:
+                pass
+            return
+        
         # 점심 시간 시작/종료 체크 및 시간 초기화
         is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
         
@@ -221,21 +241,6 @@ class MonitorService:
         
         # 점심 시간 중에는 알림 안 보냄
         if is_lunch_time:
-            return
-        
-        # 수업 시간 체크 (수업 시간이 아니면 모든 알림 중단)
-        is_class_time = self._is_class_time()
-        if not is_class_time:
-            # 수업 시간이 아니면 조용히 스킵
-            now_str = now.strftime("%H:%M")
-            current_time_obj = now.time()
-            class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            
-            # 디버깅: 수업 종료 후 알람이 오는 경우를 확인하기 위해 로그 추가
-            if current_time_obj > class_end_obj:
-                print(f"⏰ 수업 종료 시간 이후 ({now_str} > {config.CLASS_END_TIME}) - 알림 중단")
-            elif current_time_obj < datetime.strptime(config.CLASS_START_TIME, "%H:%M").time():
-                print(f"⏰ 수업 시작 시간 전 ({now_str} < {config.CLASS_START_TIME}) - 알림 중단")
             return
         
         # 접속 종료 학생 체크 (카메라 상태와 무관하게 항상 수행)
