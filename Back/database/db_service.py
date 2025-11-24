@@ -441,6 +441,26 @@ class DBService:
             await session.commit()
     
     @staticmethod
+    async def reset_all_cameras_to_off(reset_time: datetime):
+        """
+        수업 종료 시 모든 학생의 카메라 상태를 OFF로 변경
+        
+        Args:
+            reset_time: 수업 종료 시간
+        """
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Student)
+                .where(Student.is_cam_on == True)
+                .values(
+                    is_cam_on=False,
+                    last_status_change=to_naive(reset_time),
+                    updated_at=to_naive(utcnow())
+                )
+            )
+            await session.commit()
+    
+    @staticmethod
     async def record_user_leave(student_id: int):
         """
         접속 종료 시간 기록

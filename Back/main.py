@@ -6,6 +6,7 @@ import asyncio
 import signal
 import sys
 from datetime import datetime, timezone, date
+from typing import Optional
 import uvicorn
 
 from config import config
@@ -17,11 +18,22 @@ from api.server import app
 from api.websocket_manager import manager
 
 
+# 전역 시스템 인스턴스 (API에서 접근하기 위해)
+_system_instance: Optional['ZepMonitoringSystem'] = None
+
+def get_system_instance() -> Optional['ZepMonitoringSystem']:
+    """전역 시스템 인스턴스 반환"""
+    return _system_instance
+
+
 class ZepMonitoringSystem:
     """ZEP 모니터링 시스템 메인 클래스"""
     
     def __init__(self):
         """시스템 초기화"""
+        global _system_instance
+        _system_instance = self
+        
         self.discord_bot = None
         self.slack_listener = None
         self.monitor_service = None

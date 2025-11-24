@@ -1,11 +1,13 @@
 """
 설정 API
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
+from datetime import datetime, timezone
 
 from config import config
 from api.schemas.settings import SettingsResponse, SettingsUpdate
 from database import DBService
+from main import get_system_instance
 
 
 router = APIRouter()
@@ -83,5 +85,53 @@ async def test_connection(type: str = Query(..., regex="^(discord|slack)$")):
         return {"success": True, "message": "Slack connected"}
     else:
         return {"success": False, "message": "Unknown type"}
+
+
+@router.post("/reset")
+async def reset_all_status():
+    """모든 학생의 상태 초기화"""
+    system = get_system_instance()
+    if not system or not system.monitor_service:
+        raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
+    
+    try:
+        # 모든 학생의 카메라 상태 및 알림 기록 초기화
+        reset_time = datetime.now(timezone.utc)
+        await DBService.reset_all_alert_status()
+        
+        # 대시보드 업데이트 브로드캐스트
+        await system.monitor_service.broadcast_dashboard_update_now()
+        
+        return {"success": True, "message": "초기화가 완료되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
+
+
+@router.post("/pause-alerts")
+async def pause_alerts():
+    """알람 일시정지"""
+    system = get_system_instance()
+    if not system or not system.monitor_service:
+        raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
+    
+    try:
+        system.monitor_service.pause_dm()
+        return {"success": True, "message": "알람이 중지되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"알람 중지 실패: {str(e)}")
+
+
+@router.post("/resume-alerts")
+async def resume_alerts():
+    """알람 재개"""
+    system = get_system_instance()
+    if not system or not system.monitor_service:
+        raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
+    
+    try:
+        system.monitor_service.resume_dm()
+        return {"success": True, "message": "알람이 시작되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"알람 시작 실패: {str(e)}")
 
 

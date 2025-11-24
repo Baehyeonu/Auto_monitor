@@ -5,6 +5,7 @@ import { SlackSettings } from '@/components/settings/SlackSettings'
 import { ScheduleSettings } from '@/components/settings/ScheduleSettings'
 import { ScreenMonitorSettings } from '@/components/settings/ScreenMonitorSettings'
 import { DatabaseSettings } from '@/components/settings/DatabaseSettings'
+import { ResetSettings } from '@/components/settings/ResetSettings'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 
@@ -40,6 +41,7 @@ export default function SettingsPage() {
         <SlackSettings settings={settings} />
         <ScheduleSettings settings={settings} isSaving={isSaving} onSave={handleSave} />
         <ScreenMonitorSettings settings={settings} isSaving={isSaving} onSave={handleSave} />
+        <ResetSettings settings={settings} />
         <DatabaseSettings />
       </div>
     </div>

@@ -203,7 +203,7 @@ class MonitorService:
         
         # 수업 시간 체크 (수업 시간이 아니면 모든 알림 중단)
         if not self._is_class_time():
-            return
+                return
         
         # 접속 종료 학생 체크 (카메라 상태와 무관하게 항상 수행)
         await self._check_left_students()
