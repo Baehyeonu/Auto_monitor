@@ -37,3 +37,4 @@ class AdminManager:
 
 admin_manager = AdminManager()
 
+

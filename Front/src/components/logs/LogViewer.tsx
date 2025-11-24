@@ -82,19 +82,50 @@ LogItem.displayName = 'LogItem'
 export function LogViewer() {
   const filteredLogs = useLogStore((state) => state.filteredLogs)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isAutoScrollingRef = useRef(true)
 
+  // 로그를 시간순으로 정렬 (오래된 것부터 최신 순서)
+  const sortedLogs = [...filteredLogs].sort((a, b) => {
+    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  })
+
+  // 사용자가 수동으로 스크롤하면 자동 스크롤 비활성화
+  const handleScroll = () => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const isAtBottom = 
+      container.scrollHeight - container.scrollTop - container.clientHeight < 50
+    isAutoScrollingRef.current = isAtBottom
+  }
+
+  // 새로운 로그가 추가되거나 필터가 변경되면 자동 스크롤
   useEffect(() => {
     const container = scrollContainerRef.current
-    if (container && filteredLogs.length > 0) {
-      const shouldAutoScroll = 
-        container.scrollHeight - container.scrollTop - container.clientHeight < 100
-      if (shouldAutoScroll) {
-        container.scrollTop = container.scrollHeight
-      }
+    if (container && sortedLogs.length > 0 && isAutoScrollingRef.current) {
+      // 다음 프레임에서 스크롤 (DOM 업데이트 후)
+      requestAnimationFrame(() => {
+        if (container && isAutoScrollingRef.current) {
+          container.scrollTop = container.scrollHeight
+        }
+      })
     }
-  }, [filteredLogs.length])
+  }, [sortedLogs.length, sortedLogs[sortedLogs.length - 1]?.id])
 
-  if (filteredLogs.length === 0) {
+  // 컴포넌트 마운트 시 자동 스크롤
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (container && sortedLogs.length > 0) {
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight
+          isAutoScrollingRef.current = true
+        }
+      })
+    }
+  }, [])
+
+  if (sortedLogs.length === 0) {
     return (
       <EmptyState
         title="로그가 없습니다"
@@ -107,10 +138,11 @@ export function LogViewer() {
     <div className="glass-panel rounded-lg border border-border/60">
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="max-h-[600px] overflow-y-auto p-4"
       >
         <div className="space-y-2">
-          {filteredLogs.map((log) => (
+          {sortedLogs.map((log) => (
             <LogItem key={log.id} log={log} />
           ))}
         </div>
