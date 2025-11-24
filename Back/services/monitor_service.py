@@ -76,10 +76,14 @@ class MonitorService:
         
         while self.is_running:
             try:
+                print(f"🔄 [모니터링] _check_students() 호출 시작")
                 await self._check_students()
+                print(f"✅ [모니터링] _check_students() 완료, {self.check_interval}초 대기...")
                 await asyncio.sleep(self.check_interval)
             except Exception as e:
                 print(f"❌ 모니터링 체크 중 오류: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(self.check_interval)
     
     async def stop(self):
