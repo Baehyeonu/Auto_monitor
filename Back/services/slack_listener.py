@@ -70,34 +70,37 @@ class SlackListener:
             if message_ts < self.start_time:
                 return
             
+            # 메시지 타임스탬프를 datetime으로 변환
+            message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
+            
             text = event.get("text", "")
             
             match_on = self.pattern_cam_on.search(text)
             if match_on:
                 zep_name_raw = match_on.group(1)
                 zep_name = self._extract_name_only(zep_name_raw)
-                await self._handle_camera_on(zep_name_raw, zep_name)
+                await self._handle_camera_on(zep_name_raw, zep_name, message_dt)
                 return
             
             match_off = self.pattern_cam_off.search(text)
             if match_off:
                 zep_name_raw = match_off.group(1)
                 zep_name = self._extract_name_only(zep_name_raw)
-                await self._handle_camera_off(zep_name_raw, zep_name)
+                await self._handle_camera_off(zep_name_raw, zep_name, message_dt)
                 return
             
             match_leave = self.pattern_leave.search(text)
             if match_leave:
                 zep_name_raw = match_leave.group(1)
                 zep_name = self._extract_name_only(zep_name_raw)
-                await self._handle_user_leave(zep_name_raw, zep_name)
+                await self._handle_user_leave(zep_name_raw, zep_name, message_dt)
                 return
             
             match_join = self.pattern_join.search(text)
             if match_join:
                 zep_name_raw = match_join.group(1)
                 zep_name = self._extract_name_only(zep_name_raw)
-                await self._handle_user_join(zep_name_raw, zep_name)
+                await self._handle_user_join(zep_name_raw, zep_name, message_dt)
                 return
     
     async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None):
@@ -113,8 +116,12 @@ class SlackListener:
             if student.is_absent:
                 await self.db_service.clear_absent_status(student.id)
             
+            # 상태가 실제로 변경되었는지 확인
+            was_cam_on = student.is_cam_on
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
-            if success and not self.is_restoring:
+            
+            # 상태가 변경되었을 때만 브로드캐스트 (카메라가 꺼져있었는데 켜진 경우)
+            if success and not self.is_restoring and not was_cam_on:
                 await manager.broadcast_student_status_changed(
                     student_id=student.id,
                     zep_name=student.zep_name,
@@ -135,8 +142,12 @@ class SlackListener:
                 break
         
         if student:
+            # 상태가 실제로 변경되었는지 확인
+            was_cam_on = student.is_cam_on
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
-            if success and not self.is_restoring:
+            
+            # 상태가 변경되었을 때만 브로드캐스트 (카메라가 켜져있었는데 꺼진 경우)
+            if success and not self.is_restoring and was_cam_on:
                 await manager.broadcast_student_status_changed(
                     student_id=student.id,
                     zep_name=student.zep_name,
