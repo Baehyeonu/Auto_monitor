@@ -141,18 +141,24 @@ class MonitorService:
             class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
             lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
             lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
-        except ValueError:
+        except ValueError as e:
             # 파싱 실패 시 기본값으로 처리
+            print(f"⚠️ 시간 파싱 실패: {e}")
             return False
         
-        # 수업 시간 체크
-        if current_time < class_start or current_time > class_end:
+        # 수업 시작 전이면 False
+        if current_time < class_start:
             return False
         
-        # 점심 시간 체크
+        # 수업 종료 후면 False
+        if current_time > class_end:
+            return False
+        
+        # 점심 시간이면 False
         if lunch_start <= current_time <= lunch_end:
             return False
         
+        # 위 조건을 모두 통과하면 수업 시간
         return True
     
     async def _check_students(self):
@@ -202,8 +208,14 @@ class MonitorService:
             return
         
         # 수업 시간 체크 (수업 시간이 아니면 모든 알림 중단)
-        if not self._is_class_time():
-                return
+        is_class_time = self._is_class_time()
+        if not is_class_time:
+            # 수업 시간이 아니면 조용히 스킵
+            # 디버깅: 수업 종료 후 알람이 오는 경우를 확인하기 위해 로그 추가
+            now_str = now.strftime("%H:%M")
+            if now_str > config.CLASS_END_TIME:
+                print(f"⏰ 수업 종료 시간 이후 ({now_str} > {config.CLASS_END_TIME}) - 알림 중단")
+            return
         
         # 접속 종료 학생 체크 (카메라 상태와 무관하게 항상 수행)
         await self._check_left_students()
