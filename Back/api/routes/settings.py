@@ -3,14 +3,23 @@
 """
 from fastapi import APIRouter, Query, HTTPException
 from datetime import datetime, timezone
+from typing import Optional
 
 from config import config
 from api.schemas.settings import SettingsResponse, SettingsUpdate
 from database import DBService
-from main import get_system_instance
 
 
 router = APIRouter()
+
+
+def get_system_instance():
+    """시스템 인스턴스 가져오기 (지연 import로 순환 참조 방지)"""
+    try:
+        from main import get_system_instance as _get_system_instance
+        return _get_system_instance()
+    except ImportError:
+        return None
 
 
 @router.get("", response_model=SettingsResponse)
