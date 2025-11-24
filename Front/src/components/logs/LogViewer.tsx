@@ -1,11 +1,7 @@
-import { useMemo, useRef, useEffect, memo, useState } from 'react'
+import { useRef, useEffect, memo } from 'react'
 import { useLogStore } from '@/stores/useLogStore'
 import { EmptyState } from '@/components/common/EmptyState'
 import type { LogEntry } from '@/types/log'
-
-const ITEM_HEIGHT = 100
-const VISIBLE_ITEMS = 6
-const BUFFER = 2
 
 const LogItem = memo(({ log }: { log: LogEntry }) => {
   const getLevelColor = (level: LogEntry['level']) => {
@@ -86,49 +82,15 @@ LogItem.displayName = 'LogItem'
 export function LogViewer() {
   const filteredLogs = useLogStore((state) => state.filteredLogs)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [startIndex, setStartIndex] = useState(0)
-  const [endIndex, setEndIndex] = useState(VISIBLE_ITEMS + BUFFER)
-
-  const visibleLogs = useMemo(() => {
-    return filteredLogs.slice(startIndex, endIndex)
-  }, [filteredLogs, startIndex, endIndex])
-
-  useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-
-    const handleScroll = () => {
-      const scrollTop = container.scrollTop
-      const newStartIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER)
-      const newEndIndex = Math.min(
-        filteredLogs.length,
-        newStartIndex + VISIBLE_ITEMS + BUFFER * 2
-      )
-      
-      if (newStartIndex !== startIndex || newEndIndex !== endIndex) {
-        setStartIndex(newStartIndex)
-        setEndIndex(newEndIndex)
-      }
-    }
-
-    container.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll()
-
-    return () => {
-      container.removeEventListener('scroll', handleScroll)
-    }
-  }, [filteredLogs.length, startIndex, endIndex])
 
   useEffect(() => {
     const container = scrollContainerRef.current
     if (container && filteredLogs.length > 0) {
-      requestAnimationFrame(() => {
-        const shouldAutoScroll = 
-          container.scrollHeight - container.scrollTop - container.clientHeight < 100
-        if (shouldAutoScroll) {
-          container.scrollTop = container.scrollHeight
-        }
-      })
+      const shouldAutoScroll = 
+        container.scrollHeight - container.scrollTop - container.clientHeight < 100
+      if (shouldAutoScroll) {
+        container.scrollTop = container.scrollHeight
+      }
     }
   }, [filteredLogs.length])
 
@@ -141,32 +103,16 @@ export function LogViewer() {
     )
   }
 
-  const totalHeight = filteredLogs.length * ITEM_HEIGHT
-  const offsetY = startIndex * ITEM_HEIGHT
-
   return (
     <div className="glass-panel rounded-lg border border-border/60">
       <div
         ref={scrollContainerRef}
         className="max-h-[600px] overflow-y-auto p-4"
-        style={{ position: 'relative' }}
       >
-        <div style={{ height: totalHeight, position: 'relative' }}>
-          <div
-            style={{
-              transform: `translateY(${offsetY}px)`,
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-            }}
-          >
-            <div className="space-y-2">
-              {visibleLogs.map((log) => (
-                <LogItem key={log.id} log={log} />
-              ))}
-            </div>
-          </div>
+        <div className="space-y-2">
+          {filteredLogs.map((log) => (
+            <LogItem key={log.id} log={log} />
+          ))}
         </div>
       </div>
     </div>

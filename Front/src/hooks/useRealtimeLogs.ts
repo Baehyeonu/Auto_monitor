@@ -9,6 +9,21 @@ import type { LogEntry } from '@/types/log'
 export function useRealtimeLogs() {
   const { addLog, updateStats, setConnectionState } = useLogStore()
 
+  const loadDashboardData = useCallback(() => {
+    getDashboardOverview()
+      .then((data) => {
+        updateStats({
+          total: data.total_students,
+          camera_on: data.camera_on,
+          camera_off: data.camera_off,
+          user_join: data.camera_on + data.camera_off,
+          user_leave: data.left,
+          alerts_sent: data.threshold_exceeded,
+        })
+      })
+      .catch(() => {})
+  }, [updateStats])
+
   const handleMessage = useCallback(
     (message: WebSocketMessage) => {
       switch (message.type) {
@@ -16,6 +31,7 @@ export function useRealtimeLogs() {
           addLog(
             createSystemLog('system_start', '실시간 연결이 설정되었습니다.'),
           )
+          loadDashboardData()
           break
         case 'STUDENT_STATUS_CHANGED': {
           const payload = message.payload as {
@@ -66,7 +82,7 @@ export function useRealtimeLogs() {
           break
       }
     },
-    [addLog, updateStats],
+    [addLog, updateStats, loadDashboardData],
   )
 
   const { isConnected } = useWebSocket({
@@ -78,19 +94,8 @@ export function useRealtimeLogs() {
   }, [isConnected, setConnectionState])
 
   useEffect(() => {
-    getDashboardOverview()
-      .then((data) => {
-        updateStats({
-          total: data.total_students,
-          camera_on: data.camera_on,
-          camera_off: data.camera_off,
-          user_join: data.camera_on + data.camera_off,
-          user_leave: data.left,
-          alerts_sent: data.threshold_exceeded,
-        })
-      })
-      .catch(() => {})
-  }, [updateStats])
+    loadDashboardData()
+  }, [loadDashboardData])
 
   function createSystemLog(eventType: string, message: string): LogEntry {
     return {

@@ -106,14 +106,16 @@ export const useLogStore = create<LogState>()(
           state.filteredLogs = filterLogs(state.logs, state.filter)
         }
       },
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState as any),
-        filteredLogs: filterLogs(
-          (persistedState as any)?.logs || [],
-          (persistedState as any)?.filter || currentState.filter
-        ),
-      }),
+      merge: (persistedState, currentState) => {
+        const logs = (persistedState as any)?.logs || []
+        const filter = (persistedState as any)?.filter || currentState.filter
+        return {
+          ...currentState,
+          ...(persistedState as any),
+          filteredLogs: filterLogs(logs, filter),
+        }
+      },
+      skipHydration: false,
     }
   )
 )

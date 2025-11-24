@@ -133,14 +133,24 @@ class MonitorService:
             bool: 수업 시간이면 True, 아니면 False
         """
         now = datetime.now()
-        current_time = now.strftime("%H:%M")
+        current_time = now.time()
+        
+        # 수업 시작/종료 시간 파싱
+        try:
+            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+            class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
+            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
+            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
+        except ValueError:
+            # 파싱 실패 시 기본값으로 처리
+            return False
         
         # 수업 시간 체크
-        if current_time < config.CLASS_START_TIME or current_time > config.CLASS_END_TIME:
+        if current_time < class_start or current_time > class_end:
             return False
         
         # 점심 시간 체크
-        if config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME:
+        if lunch_start <= current_time <= lunch_end:
             return False
         
         return True
@@ -191,14 +201,9 @@ class MonitorService:
         if is_lunch_time:
             return
         
-        # 수업 시간 체크
+        # 수업 시간 체크 (수업 시간이 아니면 모든 알림 중단)
         if not self._is_class_time():
-            # 수업 시작 전
-            if current_time < config.CLASS_START_TIME:
-                return
-            # 수업 종료 후
-            elif current_time > config.CLASS_END_TIME:
-                return
+            return
         
         # 접속 종료 학생 체크 (카메라 상태와 무관하게 항상 수행)
         await self._check_left_students()
