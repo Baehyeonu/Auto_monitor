@@ -177,6 +177,15 @@ class MonitorService:
             if elapsed < self.warmup_minutes:
                 # 조용히 스킵 (로그 안 남김)
                 return
+        current_time_obj = now.time()
+        
+        # 디버깅: 수업 종료 시간 이후인지 먼저 체크
+        try:
+            class_end_obj = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
+            if current_time_obj > class_end_obj:
+                print(f"⏰ [디버깅] 수업 종료 시간 이후 ({current_time} > {config.CLASS_END_TIME}) - _check_students() 실행 중")
+        except Exception:
+            pass
         
         now = datetime.now()
         current_time = now.strftime("%H:%M")
