@@ -61,3 +61,12 @@ export async function bulkCreateStudents(
   )
 }
 
+export async function deleteAllStudents() {
+  return apiRequest<{ success: boolean; deleted: number; failed: number; message: string }>(
+    `${API_ROUTES.students}/bulk/all`,
+    {
+      method: 'DELETE',
+    },
+  )
+}
+

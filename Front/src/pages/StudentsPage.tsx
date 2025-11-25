@@ -4,12 +4,12 @@ import { StudentList } from '@/components/students/StudentList'
 import { BulkImport } from '@/components/students/BulkImport'
 import { AdminRegistration } from '@/components/students/AdminRegistration'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { fetchStudents, createStudent, deleteStudent } from '@/services/studentService'
+import { fetchStudents, createStudent, deleteStudent, deleteAllStudents, updateAdminStatus } from '@/services/studentService'
 import type { Student } from '@/types/student'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Trash2 } from 'lucide-react'
+import { Trash2, AlertCircle } from 'lucide-react'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type { WebSocketMessage } from '@/types/websocket'
 
@@ -98,8 +98,29 @@ export default function StudentsPage() {
     try {
       await deleteStudent(id)
       await loadStudents()
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.detail || error?.message || '삭제에 실패했습니다.'
+      alert(errorMessage)
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    const studentCount = studentsTotal
+    if (studentCount === 0) {
+      alert('삭제할 학생이 없습니다.')
+      return
+    }
+    
+    if (!confirm(`모든 학생(${studentCount}명)을 삭제하시겠습니까?\n관리자는 삭제되지 않습니다.`)) {
+      return
+    }
+    
+    try {
+      const response = await deleteAllStudents()
+      alert(response.message)
+      await loadStudents()
     } catch (error) {
-      alert('삭제에 실패했습니다.')
+      alert('전체 삭제에 실패했습니다.')
     }
   }
 
@@ -110,7 +131,7 @@ export default function StudentsPage() {
       {
         value: 'delete',
         label: '학생 삭제',
-        content: <StudentDeletePanel onDelete={handleDelete} onUpdated={loadStudents} />,
+        content: <StudentDeletePanel onDelete={handleDelete} onDeleteAll={handleDeleteAll} onUpdated={loadStudents} />,
       },
       {
         value: 'admin',
@@ -175,10 +196,11 @@ export default function StudentsPage() {
 
 type DeletePanelProps = {
   onDelete: (id: number) => Promise<void>
+  onDeleteAll: () => Promise<void>
   onUpdated?: () => Promise<void> | void
 }
 
-function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
+function StudentDeletePanel({ onDelete, onDeleteAll, onUpdated }: DeletePanelProps) {
   const [allStudents, setAllStudents] = useState<Student[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -259,11 +281,19 @@ function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
     }
   }
 
+  const selectedStudent = useMemo(() => {
+    return allStudents.find((s) => s.id === selectedId) || null
+  }, [selectedId, allStudents])
+
   const handleDeleteClick = async () => {
-    if (!selectedId) return
-    const student = allStudents.find((s) => s.id === selectedId)
-    if (!student) return
-    if (!confirm(`${student.zep_name} 학생을 삭제하시겠습니까?`)) return
+    if (!selectedId || !selectedStudent) return
+    
+    if (selectedStudent.is_admin) {
+      alert('관리자는 삭제할 수 없습니다. 먼저 학생 상태로 변경해주세요.')
+      return
+    }
+    
+    if (!confirm(`${selectedStudent.zep_name} 학생을 삭제하시겠습니까?`)) return
     setIsDeleting(true)
     try {
       await onDelete(selectedId)
@@ -271,10 +301,28 @@ function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
       await onUpdated?.()
       setSelectedId(null)
       setSearchTerm('')
-    } catch (error) {
-      alert('삭제에 실패했습니다.')
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.detail || error?.message || '삭제에 실패했습니다.'
+      alert(errorMessage)
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleConvertToStudent = async () => {
+    if (!selectedId || !selectedStudent || !selectedStudent.is_admin) return
+    
+    if (!confirm(`${selectedStudent.zep_name} 관리자를 학생 상태로 변경하시겠습니까?`)) return
+    
+    try {
+      await updateAdminStatus(selectedId, false)
+      await loadAllStudents()
+      await onUpdated?.()
+      alert('학생 상태로 변경되었습니다. 이제 삭제할 수 있습니다.')
+      setSelectedId(null)
+      setSearchTerm('')
+    } catch (error) {
+      alert('상태 변경에 실패했습니다.')
     }
   }
 
@@ -343,8 +391,15 @@ function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
                       onMouseEnter={() => setFocusedIndex(index)}
                     >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">{student.zep_name}</p>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{student.zep_name}</p>
+                            {student.is_admin && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400">
+                                관리자
+                              </span>
+                            )}
+                          </div>
                           {student.discord_id && (
                             <p className="text-xs text-muted-foreground">Discord: {student.discord_id}</p>
                           )}
@@ -359,15 +414,44 @@ function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
               )}
             </div>
 
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={handleDeleteClick}
-              disabled={!selectedId || isDeleting}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {isDeleting ? '삭제 중...' : '학생 삭제'}
-            </Button>
+            {selectedStudent && selectedStudent.is_admin && (
+              <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                  <AlertCircle className="h-4 w-4" />
+                  <p className="text-sm font-semibold">관리자는 삭제할 수 없습니다</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  삭제하려면 먼저 학생 상태로 변경해주세요.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleConvertToStudent}
+                >
+                  학생 상태로 변경
+                </Button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={handleDeleteClick}
+                disabled={!selectedId || isDeleting || (selectedStudent?.is_admin ?? false)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {isDeleting ? '삭제 중...' : '학생 삭제'}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={onDeleteAll}
+                className="flex-1"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                전체 삭제
+              </Button>
+            </div>
           </>
         )}
       </CardContent>

@@ -110,11 +110,48 @@ async def update_student(student_id: int, data: StudentUpdate):
 
 @router.delete("/{student_id}")
 async def delete_student(student_id: int):
-    """학생 삭제"""
+    """학생 삭제 (관리자는 삭제 불가)"""
+    student = await db_service.get_student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    if student.is_admin:
+        raise HTTPException(
+            status_code=400,
+            detail="관리자는 삭제할 수 없습니다. 먼저 학생 상태로 변경해주세요."
+        )
+    
     success = await db_service.delete_student(student_id)
     if not success:
         raise HTTPException(status_code=404, detail="Student not found")
     return {"success": True, "message": "Student deleted"}
+
+
+@router.delete("/bulk/all")
+async def delete_all_students():
+    """학생 전체 삭제 (관리자 제외)"""
+    students = await db_service.get_all_students()
+    student_ids = [s.id for s in students if not s.is_admin]
+    
+    deleted_count = 0
+    failed_count = 0
+    
+    for student_id in student_ids:
+        try:
+            success = await db_service.delete_student(student_id)
+            if success:
+                deleted_count += 1
+            else:
+                failed_count += 1
+        except Exception:
+            failed_count += 1
+    
+    return {
+        "success": True,
+        "deleted": deleted_count,
+        "failed": failed_count,
+        "message": f"{deleted_count}명의 학생이 삭제되었습니다."
+    }
 
 
 @router.post("/bulk")
