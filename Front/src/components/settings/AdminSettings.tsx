@@ -21,7 +21,6 @@ export function AdminSettings({ onUpdated }: AdminSettingsProps) {
   const loadAllStudents = useCallback(async () => {
     setIsLoading(true)
     try {
-      // 충분히 큰 limit으로 전체 목록을 가져온다.
       const response = await fetchStudents({ limit: 500 })
       setAllStudents(response.data)
     } finally {
@@ -58,7 +57,6 @@ export function AdminSettings({ onUpdated }: AdminSettingsProps) {
   const adminStudents = allStudents.filter((student) => student.is_admin)
   const nonAdminStudents = allStudents.filter((student) => !student.is_admin)
 
-  // 검색 필터링
   const filteredAdminStudents = adminStudents.filter((student) =>
     student.zep_name.toLowerCase().includes(searchTerm.toLowerCase())
   )

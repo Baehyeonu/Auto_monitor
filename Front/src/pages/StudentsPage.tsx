@@ -225,7 +225,6 @@ function StudentDeletePanel({ onDelete, onDeleteAll, onUpdated }: DeletePanelPro
     loadAllStudents()
   }, [loadAllStudents])
 
-  // 검색어에 따른 자동완성 필터링
   const filteredSuggestions = useMemo(() => {
     if (!searchTerm || searchTerm.trim().length === 0) {
       return []
@@ -235,7 +234,6 @@ function StudentDeletePanel({ onDelete, onDeleteAll, onUpdated }: DeletePanelPro
     )
   }, [searchTerm, allStudents])
 
-  // 검색어나 필터링 결과가 변경될 때 자동완성 표시 여부 업데이트
   useEffect(() => {
     if (searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0) {
       setShowSuggestions(true)
@@ -248,7 +246,6 @@ function StudentDeletePanel({ onDelete, onDeleteAll, onUpdated }: DeletePanelPro
     const value = e.target.value
     setSearchTerm(value)
     setFocusedIndex(-1)
-    // 검색어가 변경되면 선택 해제
     const currentStudent = allStudents.find(s => s.id === selectedId)
     if (!currentStudent || value !== currentStudent.zep_name) {
       setSelectedId(null)
@@ -326,7 +323,6 @@ function StudentDeletePanel({ onDelete, onDeleteAll, onUpdated }: DeletePanelPro
     }
   }
 
-  // 외부 클릭 시 자동완성 닫기
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (

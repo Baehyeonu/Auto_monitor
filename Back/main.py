@@ -18,7 +18,6 @@ from api.server import app
 from api.websocket_manager import manager
 
 
-# 전역 시스템 인스턴스 (API에서 접근하기 위해)
 _system_instance: Optional['ZepMonitoringSystem'] = None
 
 def get_system_instance() -> Optional['ZepMonitoringSystem']:
@@ -278,11 +277,9 @@ class ZepMonitoringSystem:
         print(f"  • 카메라 OFF 임계값: {config.CAMERA_OFF_THRESHOLD}분")
         print(f"  • 알림 쿨다운: {config.ALERT_COOLDOWN}분")
         
-        # DM 발송 상태
         dm_status = "⏸️  일시정지" if self.monitor_service.is_dm_paused else "🔔 정상"
         print(f"  • DM 발송: {dm_status}")
         
-        # 모니터링 상태
         if self.monitor_service.is_monitoring_paused:
             print(f"  • 모니터링: ⏸️  일시정지 (수동)")
         else:
@@ -624,7 +621,7 @@ class ZepMonitoringSystem:
             traceback.print_exc()
     
     async def _print_not_joined_students(self):
-        """오늘 접속하지 않은 학생들만 출력"""
+        """오늘 초기화 시간 이후 접속하지 않은 학생들만 출력"""
         try:
             all_students = await DBService.get_all_students()
             
@@ -636,8 +633,8 @@ class ZepMonitoringSystem:
             
             not_joined_students = [
                 student for student in all_students
-                if student.id not in joined_today 
-                and student.last_leave_time is None
+                if student.id not in joined_today  # 오늘 초기화 시간 이후 입장하지 않음
+                and student.last_leave_time is None  # 퇴장하지 않음
                 and not (student.discord_id and self.discord_bot.is_admin(student.discord_id))
             ]
             
@@ -699,20 +696,16 @@ class ZepMonitoringSystem:
 
 async def main():
     """메인 실행 함수"""
-    # 시스템 인스턴스 생성
     system = ZepMonitoringSystem()
     
-    # Graceful Shutdown 핸들러
     def signal_handler(sig, frame):
         print("\n⚠️ 종료 신호 수신")
-        # 플래그만 설정하고 정상 종료 프로세스 시작
         system.is_running = False
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        # 시스템 초기화 및 시작
         await system.initialize()
         await system.start()
     except KeyboardInterrupt:
@@ -722,7 +715,6 @@ async def main():
         import traceback
         traceback.print_exc()
     finally:
-        # 정상적으로 종료 처리
         await system.shutdown()
 
 

@@ -114,11 +114,9 @@ class MonitorService:
         Returns:
             활성화되어 있으면 True
         """
-        # 수동 일시정지 체크
         if self.is_monitoring_paused:
             return False
         
-        # 주말/공휴일 체크
         today = date.today()
         if self.holiday_checker.is_weekend_or_holiday(today):
             return False

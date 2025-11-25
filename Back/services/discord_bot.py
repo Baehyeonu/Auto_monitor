@@ -88,7 +88,6 @@ class DiscordBot(commands.Bot):
             """봇 준비 완료"""
             await admin_manager.ensure_loaded()
             self.is_ready = True
-            # 로그는 main.py에서 출력하므로 여기서는 출력하지 않음
         
         @self.event
         async def on_interaction(interaction: discord.Interaction):
@@ -124,16 +123,13 @@ class DiscordBot(commands.Bot):
             discord_id = ctx.author.id
             
             try:
-                # 이미 등록된 학생인지 확인
                 existing = await self.db_service.get_student_by_discord_id(discord_id)
                 if existing:
                     await ctx.send(f"❌ 이미 `{existing.zep_name}`으로 등록되어 있습니다.")
                     return
                 
-                # 이름 추출 (Slack 메시지와 동일한 로직)
                 extracted_name = self._extract_name_only(zep_name)
                 
-                # ZEP 이름 중복 확인 (추출된 이름으로)
                 existing_zep = await self.db_service.get_student_by_zep_name(extracted_name)
                 if existing_zep:
                     await ctx.send(f"❌ `{extracted_name}`은(는) 이미 다른 사용자가 등록한 이름입니다.")
@@ -242,7 +238,6 @@ class DiscordBot(commands.Bot):
                     f"등록자: {ctx.author.mention}"
                 )
                 
-                # 등록된 사용자에게 DM
                 try:
                     await user.send(
                         f"🎓 **ZEP 모니터링 시스템 등록 완료**\n\n"
@@ -302,7 +297,6 @@ class DiscordBot(commands.Bot):
         @self.command(name="help")
         async def help_command(ctx):
             """도움말 표시"""
-            # 관리자 권한 체크
             is_admin = self.is_admin(ctx.author.id)
             
             embed = discord.Embed(
@@ -549,7 +543,6 @@ class DiscordBot(commands.Bot):
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
             
-            # 첫 알림인지 재알림인지 확인
             is_first_alert = (student.alert_count == 0)
             
             if is_first_alert:
@@ -619,17 +612,14 @@ class DiscordBot(commands.Bot):
                 )
                 return
             
-            # 이미 응답했는지 확인 (중복 클릭 방지)
             already_responded = False
             if student.response_status == "absent" and student.response_time:
                 response_time_utc = student.response_time if student.response_time.tzinfo else student.response_time.replace(tzinfo=timezone.utc)
                 time_since_response = datetime.now(timezone.utc) - response_time_utc
-                # 5분 이내에 이미 응답했으면 중복으로 간주
                 if time_since_response < timedelta(minutes=5):
                     already_responded = True
             
             if already_responded:
-                # 이미 응답한 경우 - 강사 알림 보내지 않음
                 await interaction.response.send_message(
                     f"✅ 이미 응답이 기록되어 있습니다: **🚶 잠시 자리 비움**\n"
                     f"💡 10분 후에 카메라가 여전히 OFF 상태면 다시 알림을 받게 됩니다.",
@@ -637,13 +627,9 @@ class DiscordBot(commands.Bot):
                 )
                 return
             
-            # 응답 기록 (자리 비움 전용)
             await self.db_service.record_response(student.id, action)
-            
-            # 10분 후 재알림 설정
             await self.db_service.set_absent_reminder(student.id)
             
-            # 사용자에게 응답 확인
             await interaction.response.send_message(
                 f"✅ 응답이 기록되었습니다: **🚶 잠시 자리 비움**\n"
                 f"강사님께 알림이 전송됩니다.\n"
@@ -681,9 +667,7 @@ class DiscordBot(commands.Bot):
                 )
                 return
             
-            # 현재 카메라 상태 확인 (실시간)
             if student.is_cam_on:
-                # 카메라가 켜져 있음
                 await interaction.response.send_message(
                     f"✅ **카메라 확인 완료!**\n\n"
                     f"📷 현재 상태: **카메라 ON** 🟢\n"
@@ -691,7 +675,6 @@ class DiscordBot(commands.Bot):
                     ephemeral=True
                 )
             else:
-                # 카메라가 여전히 꺼져 있음
                 await interaction.response.send_message(
                     f"❌ **카메라가 꺼져 있습니다!**\n\n"
                     f"📷 현재 상태: **카메라 OFF** 🔴\n"
@@ -760,7 +743,6 @@ class DiscordBot(commands.Bot):
             if not channel:
                 return
             
-            # 경과 시간 계산
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
             
@@ -917,10 +899,7 @@ class DiscordBot(commands.Bot):
             return
         
         try:
-            # custom_id에서 학생 ID 추출 (예: "admin_leave_123")
             student_id = int(custom_id.split("_")[-1])
-            
-            # DB에서 학생 조회
             student = await self.db_service.get_student_by_id(student_id)
             
             if not student:
@@ -1006,10 +985,7 @@ class DiscordBot(commands.Bot):
             return
         
         try:
-            # custom_id에서 student_id 추출
             student_id = int(custom_id.split("_")[-1])
-            
-            # DB에서 학생 조회
             student = await self.db_service.get_student_by_id(student_id)
             
             if not student:
@@ -1026,7 +1002,6 @@ class DiscordBot(commands.Bot):
                 )
                 return
             
-            # 학생에게 DM 전송
             user = await self.fetch_user(student.discord_id)
             last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
@@ -1091,10 +1066,8 @@ class DiscordBot(commands.Bot):
                 )
                 return
             
-            # 복귀 요청 시간 기록
             await self.db_service.record_return_request(student.id)
             
-            # 복귀 메시지 전송
             await interaction.response.send_message(
                 "🏠 **ZEP으로 돌아와주세요!**\n\n"
                 "수업이 진행 중입니다. 가능한 한 빨리 ZEP에 접속해주시기 바랍니다.\n\n"
@@ -1161,7 +1134,6 @@ class AlertView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         
-        # 버튼 1: 카메라 켬!
         camera_on_button = discord.ui.Button(
             label="카메라 켬!",
             style=discord.ButtonStyle.success,
@@ -1170,7 +1142,6 @@ class AlertView(discord.ui.View):
         )
         self.add_item(camera_on_button)
         
-        # 버튼 2: 자리 비움
         absent_button = discord.ui.Button(
             label="잠시 자리 비움 (10분 후 재알림)",
             style=discord.ButtonStyle.primary,
@@ -1186,7 +1157,6 @@ class AdminLeaveView(discord.ui.View):
     def __init__(self, student_id: int):
         super().__init__(timeout=None)
         
-        # 버튼 1: 외출
         leave_button = discord.ui.Button(
             label="외출",
             style=discord.ButtonStyle.primary,
@@ -1204,7 +1174,6 @@ class AdminLeaveView(discord.ui.View):
         )
         self.add_item(early_leave_button)
         
-        # 버튼 3: 수강생 확인
         check_button = discord.ui.Button(
             label="수강생 확인",
             style=discord.ButtonStyle.success,
@@ -1220,7 +1189,6 @@ class StudentAbsentView(discord.ui.View):
     def __init__(self, student_id: int):
         super().__init__(timeout=None)
         
-        # 버튼 1: 외출
         leave_button = discord.ui.Button(
             label="외출",
             style=discord.ButtonStyle.primary,
@@ -1238,7 +1206,6 @@ class StudentAbsentView(discord.ui.View):
         )
         self.add_item(early_leave_button)
         
-        # 버튼 3: 복귀
         return_button = discord.ui.Button(
             label="복귀",
             style=discord.ButtonStyle.success,

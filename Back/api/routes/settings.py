@@ -2,7 +2,6 @@
 설정 API
 """
 from fastapi import APIRouter, Query, HTTPException
-from datetime import datetime, timezone
 from typing import Optional
 
 from config import config

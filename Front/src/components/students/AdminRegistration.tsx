@@ -33,7 +33,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
   const loadAllStudents = useCallback(async () => {
     setIsLoading(true)
     try {
-      // 백엔드 limit 최대값이 100이므로 여러 번 요청
       const [nonAdminResponse, adminResponse] = await Promise.all([
         fetchStudents({ limit: 100, is_admin: false }),
         fetchStudents({ limit: 100, is_admin: true }),
@@ -49,7 +48,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     loadAllStudents()
   }, [loadAllStudents])
 
-  // 검색어에 따른 자동완성 필터링 (useMemo로 최적화)
   const filteredSuggestions = useMemo(() => {
     if (!searchTerm || searchTerm.trim().length === 0) {
       return []
@@ -59,7 +57,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     )
   }, [searchTerm, allNonAdminStudents])
 
-  // 관리자 삭제용 자동완성 필터링
   const filteredAdminSuggestions = useMemo(() => {
     if (!deleteSearchTerm || deleteSearchTerm.trim().length === 0) {
       return []
@@ -69,7 +66,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     )
   }, [deleteSearchTerm, allAdminStudents])
 
-  // 검색어나 필터링 결과가 변경될 때 자동완성 표시 여부 업데이트
   useEffect(() => {
     if (searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0) {
       setShowSuggestions(true)
@@ -78,7 +74,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     }
   }, [searchTerm, filteredSuggestions.length])
 
-  // 관리자 삭제용 자동완성 표시 여부 업데이트
   useEffect(() => {
     if (deleteSearchTerm && deleteSearchTerm.trim().length > 0 && filteredAdminSuggestions.length > 0) {
       setDeleteShowSuggestions(true)
@@ -91,7 +86,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     const value = e.target.value
     setSearchTerm(value)
     setFocusedIndex(-1)
-    // 검색어가 변경되면 선택 해제
     const currentStudent = allNonAdminStudents.find(s => s.id === selectedId)
     if (!currentStudent || value !== currentStudent.zep_name) {
       setSelectedId(null)
@@ -152,7 +146,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     const value = e.target.value
     setDeleteSearchTerm(value)
     setDeleteFocusedIndex(-1)
-    // 검색어가 변경되면 선택 해제
     const currentAdmin = allAdminStudents.find(s => s.id === deleteSelectedId)
     if (!currentAdmin || value !== currentAdmin.zep_name) {
       setDeleteSelectedId(null)
@@ -214,7 +207,6 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node
       
-      // 관리자 등록 자동완성
       if (
         inputRef.current &&
         !inputRef.current.contains(target) &&
@@ -223,8 +215,7 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
       ) {
         setShowSuggestions(false)
       }
-
-      // 관리자 삭제 자동완성
+      
       if (
         deleteInputRef.current &&
         !deleteInputRef.current.contains(target) &&

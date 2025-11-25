@@ -30,7 +30,6 @@ async def get_students(
     """학생 목록 조회"""
     students = await db_service.get_all_students()
     
-    # 관리자 구분 필터링 (문자열로 받아서 변환)
     is_admin_bool = None
     if is_admin is not None:
         is_admin_bool = is_admin.lower() in ('true', '1', 'yes')
@@ -38,7 +37,6 @@ async def get_students(
     if is_admin_bool is not None:
         students = [s for s in students if s.is_admin == is_admin_bool]
     
-    # 필터링 로직
     filtered_students = students
     
     if status:
@@ -49,13 +47,11 @@ async def get_students(
         elif status == "left":
             filtered_students = [s for s in filtered_students if s.last_leave_time is not None]
         elif status == "not_joined":
-            # TODO: joined_today 로직 필요
-            pass
+            pass  # TODO: joined_today 로직 필요
     
     if search:
         filtered_students = [s for s in filtered_students if search.lower() in s.zep_name.lower()]
     
-    # 페이지네이션
     total = len(filtered_students)
     start = (page - 1) * limit
     end = start + limit
@@ -96,15 +92,11 @@ async def update_student(student_id: int, data: StudentUpdate):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # TODO: DBService에 update_student 메서드 추가 필요
-    # 현재는 기본 정보만 업데이트 가능
     if data.zep_name and data.zep_name != student.zep_name:
-        # 이름 중복 체크
         existing = await db_service.get_student_by_zep_name(data.zep_name)
         if existing and existing.id != student_id:
             raise HTTPException(status_code=400, detail="ZEP name already exists")
     
-    # TODO: 실제 업데이트 로직 구현
     raise HTTPException(status_code=501, detail="Not implemented yet")
 
 

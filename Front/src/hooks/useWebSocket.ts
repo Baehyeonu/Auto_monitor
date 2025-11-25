@@ -61,7 +61,6 @@ export function useWebSocket({
         setLastMessage(data)
         onMessage?.(data)
       } catch (error) {
-        // 메시지 파싱 실패 시 무시
       }
     }
 

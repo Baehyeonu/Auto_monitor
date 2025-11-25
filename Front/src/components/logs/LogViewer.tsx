@@ -84,7 +84,6 @@ export function LogViewer() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isAutoScrollingRef = useRef(true)
 
-  // 로그를 시간순으로 정렬 (오래된 것부터 최신 순서)
   const sortedLogs = [...filteredLogs].sort((a, b) => {
     return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   })

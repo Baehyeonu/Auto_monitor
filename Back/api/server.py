@@ -11,7 +11,6 @@ from fastapi.responses import FileResponse
 from api.routes import students, dashboard, settings, reports
 from api.websocket_manager import manager
 
-# FastAPI 앱 생성
 app = FastAPI(
     title="ZEP Monitor API",
     version="1.0.0",
@@ -41,7 +40,6 @@ async def startup_event():
         await asyncio.sleep(1)
         waited += 1
 
-# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -54,7 +52,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 라우터 등록
 app.include_router(students.router, prefix="/api/v1/students", tags=["students"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])

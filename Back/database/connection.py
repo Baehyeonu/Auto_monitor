@@ -19,25 +19,18 @@ if url.drivername.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
     engine_kwargs["poolclass"] = StaticPool
     
-    # SQLite 파일 경로 추출 및 디렉토리 생성
-    # sqlite+aiosqlite:///students.db 형식에서 경로 추출
     if url.database:
         db_path = Path(url.database)
-        # 절대 경로가 아니면 현재 작업 디렉토리 기준으로 처리
         if not db_path.is_absolute():
             db_path = Path.cwd() / db_path
-        # 디렉토리가 없으면 생성
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        # 데이터베이스 URL을 절대 경로로 업데이트
         database_url = f"sqlite+aiosqlite:///{db_path.absolute()}"
         url = make_url(database_url)
 else:
     engine_kwargs["pool_pre_ping"] = True
 
-# 비동기 엔진 생성
 engine = create_async_engine(database_url, **engine_kwargs)
 
-# 세션 팩토리
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,

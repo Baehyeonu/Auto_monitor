@@ -88,12 +88,10 @@ class SlackListener:
         last_time = self.last_event_times.get(key)
         
         if last_time is None:
-            # 첫 이벤트
             self.last_event_times[key] = message_ts
             return False
         
-        # 마지막 이벤트와 시간 차이 계산
-        time_diff = abs(message_ts - last_time)  # 절대값 사용 (타임스탬프가 역순일 수도 있음)
+        time_diff = abs(message_ts - last_time)
         
         if time_diff < self.duplicate_threshold:
             return True
@@ -258,7 +256,7 @@ class SlackListener:
         except Exception:
             pass
     
-    async def _handle_user_join(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
+    async def _handle_user_join(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0, add_to_joined_today: bool = True):
         try:
             student_id = None
             matched_name = zep_name
@@ -282,7 +280,8 @@ class SlackListener:
             if self._is_duplicate_event(student_id, "user_join", message_ts):
                 return
             
-            self.joined_students_today.add(student_id)
+            if add_to_joined_today:
+                self.joined_students_today.add(student_id)
             
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
@@ -299,7 +298,6 @@ class SlackListener:
     
     async def _handle_user_leave(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
-            # ⭐ 1. 캐시에서 학생 찾기 (DB 조회 X)
             student_id = None
             matched_name = zep_name
             korean_names = self._extract_all_korean_names(zep_name_raw)
@@ -345,6 +343,7 @@ class SlackListener:
             await self.db_service.reset_all_camera_status()
             
             now = datetime.now()
+            today_reset_dt = None
             
             if config.DAILY_RESET_TIME:
                 from datetime import time as time_type
@@ -354,14 +353,19 @@ class SlackListener:
                     
                     if now < today_reset:
                         oldest_dt = today_reset - timedelta(days=1)
+                        today_reset_dt = today_reset - timedelta(days=1)
                     else:
                         oldest_dt = today_reset
+                        today_reset_dt = today_reset
                 except ValueError:
                     oldest_dt = datetime.combine(now.date(), time_type(0, 0))
+                    today_reset_dt = oldest_dt
             else:
                 oldest_dt = datetime.combine(now.date(), datetime.min.time())
+                today_reset_dt = oldest_dt
             
             oldest_ts = oldest_dt.timestamp()
+            today_reset_ts = today_reset_dt.timestamp() if today_reset_dt else oldest_ts
             
             messages = []
             cursor = None
@@ -416,7 +420,10 @@ class SlackListener:
                 if match_join:
                     zep_name_raw = match_join.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
+                    if message_ts >= today_reset_ts:
+                        await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
+                    else:
+                        await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=False)
                     continue
             
             await self.db_service.reset_all_alert_fields()

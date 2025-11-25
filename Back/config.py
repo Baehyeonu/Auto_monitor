@@ -68,7 +68,6 @@ if missing_vars:
 
 config = Config()
 
-# 저장된 설정을 불러와 반영
 try:
     from services.settings_store import load_persisted_settings
 

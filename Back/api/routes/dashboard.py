@@ -20,7 +20,6 @@ async def get_overview():
     camera_on = 0
     camera_off = 0
     left = 0
-    not_joined = 0
     threshold_exceeded = 0
     
     now = datetime.now(timezone.utc)
@@ -48,7 +47,7 @@ async def get_overview():
         "camera_on": camera_on,
         "camera_off": camera_off,
         "left": left,
-        "not_joined_today": not_joined,  # TODO: joined_today 로직 필요
+        "not_joined_today": 0,  # TODO: joined_today 로직 필요
         "threshold_exceeded": threshold_exceeded,
         "last_updated": now.isoformat()
     }
@@ -63,7 +62,6 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
     result = []
     
     for student in students:
-        # 경과 시간 계산
         elapsed_minutes = 0
         if student.last_status_change:
             last_change_utc = student.last_status_change
@@ -85,7 +83,6 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
             "alert_count": student.alert_count
         }
         
-        # 필터링
         if filter == "all":
             result.append(status_data)
         elif filter == "camera_on" and student.is_cam_on and not student.last_leave_time:

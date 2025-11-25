@@ -113,15 +113,12 @@ class DBService:
             업데이트 성공 여부
         """
         async with AsyncSessionLocal() as session:
-            # 상태 변경 시간 설정 (히스토리 복원 시 메시지 타임스탬프 사용)
             if status_change_time is None:
                 status_change_time = utcnow()
             else:
-                # 타임스탬프가 naive면 UTC로 가정
                 if status_change_time.tzinfo is None:
                     status_change_time = status_change_time.replace(tzinfo=timezone.utc)
             
-            # 카메라 ON 시 알림 관련 필드 초기화
             update_values = {
                 "is_cam_on": is_cam_on,
                 "last_status_change": to_naive(status_change_time),
@@ -129,7 +126,6 @@ class DBService:
             }
             
             if is_cam_on:
-                # 카메라 켜지면 알림 기록 완전 초기화 (새 사이클로 리셋)
                 update_values["last_alert_sent"] = None
                 update_values["response_status"] = None
                 update_values["response_time"] = None
@@ -147,9 +143,6 @@ class DBService:
     async def get_students_camera_off_too_long(threshold_minutes: int, reset_time: Optional[datetime] = None) -> List[Student]:
         """
         카메라가 일정 시간 이상 꺼진 학생들 조회
-        (접속 종료한 학생은 제외 - 접속 종료 알림으로 별도 처리)
-        (초기화 이후 접속한 학생만 체크 - reset_time 이후 last_status_change가 변경된 학생만)
-        
         Args:
             threshold_minutes: 임계값 (분)
             reset_time: 초기화 시간 (None이면 모든 학생 체크)
@@ -163,11 +156,10 @@ class DBService:
             query = select(Student).where(
                 Student.is_cam_on == False,
                 Student.last_status_change <= threshold_time,
-                Student.last_leave_time.is_(None),  # 접속 종료한 학생 제외
-                Student.discord_id.isnot(None)  # Discord ID가 있는 학생만
+                Student.last_leave_time.is_(None),
+                Student.discord_id.isnot(None)
             )
             
-            # 초기화 시간 이후 접속한 학생만 체크 (last_status_change > reset_time)
             if reset_time is not None:
                 query = query.where(Student.last_status_change > reset_time)
             
@@ -252,8 +244,6 @@ class DBService:
             student_id: 학생 ID
         """
         async with AsyncSessionLocal() as session:
-            # 현재 시간에서 (ALERT_COOLDOWN - ABSENT_REMINDER_TIME) 만큼 빼서 설정
-            # 이렇게 하면 ABSENT_REMINDER_TIME 후에 다시 알림이 가능해짐
             cooldown_offset = config.ALERT_COOLDOWN - config.ABSENT_REMINDER_TIME
             reminder_time = to_naive(utcnow() - timedelta(minutes=cooldown_offset))
             
@@ -335,17 +325,14 @@ class DBService:
             await session.execute(
                 update(Student)
                 .values(
-                    # 카메라 상태 초기화 (재시작 시 실제 상태를 모르므로 초기화)
                     is_cam_on=False,
                     last_status_change=now,
-                    # 카메라 알림 관련
                     last_alert_sent=None,
                     response_status=None,
                     response_time=None,
-                    # 접속 종료 관련 - 초기화 시 "퇴장" 상태로 표시하기 위해 last_leave_time 설정
                     is_absent=False,
                     absent_type=None,
-                    last_leave_time=to_naive(now),  # 초기화 시 "퇴장" 상태로 표시
+                    last_leave_time=to_naive(now),
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
@@ -380,34 +367,27 @@ class DBService:
             result = await session.execute(select(Student))
             all_students = result.scalars().all()
             
-            # 초기화할 학생 ID 목록
             student_ids_to_reset = []
             
             for student in all_students:
-                # timezone-naive datetime 처리
                 if student.last_status_change.tzinfo is None:
                     last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
                 else:
                     last_change_utc = student.last_status_change
                 
-                # 초기화 시간 이전이거나 같으면 초기화 대상
                 if last_change_utc <= reset_time_utc:
                     student_ids_to_reset.append(student.id)
             
             if student_ids_to_reset:
-                # 초기화 대상 학생만 업데이트
                 await session.execute(
                     update(Student)
                     .where(Student.id.in_(student_ids_to_reset))
                     .values(
-                        # 카메라 상태 초기화
                         is_cam_on=False,
                         last_status_change=reset_time_utc,
-                        # 카메라 알림 관련
                         last_alert_sent=None,
                         response_status=None,
                         response_time=None,
-                        # 접속 종료 관련
                         is_absent=False,
                         absent_type=None,
                         last_leave_time=None,
@@ -499,8 +479,8 @@ class DBService:
                 select(Student)
                 .where(Student.last_leave_time.isnot(None))
                 .where(Student.last_leave_time <= threshold_time)
-                .where(Student.is_absent == False)  # 외출/조퇴 상태가 아닌 학생만
-                .where(Student.discord_id.isnot(None))  # Discord ID가 있는 학생만
+                .where(Student.is_absent == False)
+                .where(Student.discord_id.isnot(None))
             )
             return result.scalars().all()
     
@@ -525,7 +505,6 @@ class DBService:
             if not student:
                 return False
             
-            # 외출/조퇴 상태가 아니면 알림 안 보냄
             if not student.is_absent:
                 return False
             
@@ -546,7 +525,6 @@ class DBService:
             absent_type: "leave" (외출) 또는 "early_leave" (조퇴)
         """
         async with AsyncSessionLocal() as session:
-            # 오늘 날짜의 끝 (내일 00:00)으로 설정하여 오늘 하루 동안 알림 안 보냄
             from datetime import timedelta
             now = utcnow()
             tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -670,7 +648,6 @@ class DBService:
             if not student:
                 return False
             
-            # 외출/조퇴 상태면 알림 안 보냄
             if student.is_absent:
                 return False
             
@@ -714,9 +691,6 @@ class DBService:
         - absent_type: None
         
         이유:
-        - 오늘 접속하지 않은 학생(휴가, 결석 등)은 모니터링 대상에서 제외
-        - 히스토리 복원 시 오늘 실제로 접속/종료한 학생만 상태가 업데이트됨
-        - 어제 퇴근한 학생의 접속 종료 알림 방지
         """
         async with AsyncSessionLocal() as session:
             await session.execute(
