@@ -7,6 +7,7 @@ from typing import Optional
 
 from config import config
 from api.schemas.settings import SettingsResponse, SettingsUpdate
+from services.settings_store import save_persisted_settings
 from database import DBService
 
 
@@ -64,6 +65,9 @@ async def update_settings(data: SettingsUpdate):
         config.LUNCH_END_TIME = data.lunch_end_time
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
+    
+    # 설정을 디스크에 저장하여 재시작 후에도 유지
+    save_persisted_settings(config)
     
     # 업데이트된 설정 반환
     admins = await DBService.get_admin_students()

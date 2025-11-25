@@ -68,3 +68,11 @@ if missing_vars:
 
 config = Config()
 
+# 저장된 설정을 불러와 반영
+try:
+    from services.settings_store import load_persisted_settings
+
+    load_persisted_settings(config)
+except Exception as e:
+    print(f"[Config] persisted settings load failed: {e}")
+

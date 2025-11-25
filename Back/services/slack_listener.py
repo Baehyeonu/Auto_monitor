@@ -35,6 +35,8 @@ class SlackListener:
         # key: zep_name, value: student_id
         self.student_cache: Dict[str, int] = {}
         
+        self.role_keywords = {"조교", "주강사", "멘토", "매니저"}
+        
         self.pattern_cam_on = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:켰습니다|on\s*되었습니다)")
         self.pattern_cam_off = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:껐습니다|off\s*되었습니다)")
         self.pattern_leave = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님이?\s*.*(퇴장|접속\s*종료|접속을\s*종료|나갔습니다)(?:했습니다)?")
@@ -51,10 +53,12 @@ class SlackListener:
             if any('\uAC00' <= char <= '\uD7A3' for char in part):
                 korean_parts.append(part)
         
-        if len(korean_parts) > 1:
+        filtered = [part for part in korean_parts if part not in self.role_keywords]
+        
+        if filtered:
+            return filtered[-1]
+        elif korean_parts:
             return korean_parts[-1]
-        elif len(korean_parts) == 1:
-            return korean_parts[0]
         
         if parts:
             return parts[0]
@@ -70,7 +74,10 @@ class SlackListener:
             if any('\uAC00' <= char <= '\uD7A3' for char in part):
                 korean_parts.append(part)
         
-        return list(reversed(korean_parts)) if korean_parts else [zep_name.strip()]
+        filtered = [part for part in korean_parts if part not in self.role_keywords]
+        target_parts = filtered if filtered else korean_parts
+        
+        return list(reversed(target_parts)) if target_parts else [zep_name.strip()]
     
     def _is_duplicate_event(self, student_id: int, event_type: str, message_ts: float) -> bool:
         """
