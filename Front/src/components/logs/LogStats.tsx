@@ -36,9 +36,9 @@ export function LogStats({ stats }: LogStatsProps) {
         </p>
       </div>
       <div className="glass-panel rounded-lg border border-border/60 p-4">
-        <p className="text-sm text-muted-foreground">에러</p>
-        <p className="text-2xl font-semibold text-red-500">
-          {stats?.errors ?? 0}
+        <p className="text-sm text-muted-foreground">미접속</p>
+        <p className="text-2xl font-semibold text-gray-500">
+          {stats?.not_joined ?? 0}
         </p>
       </div>
     </div>

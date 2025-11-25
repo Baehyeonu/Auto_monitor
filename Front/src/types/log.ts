@@ -43,6 +43,6 @@ export interface LogStats {
   user_join: number
   user_leave: number
   alerts_sent: number
-  errors: number
+  not_joined: number
 }
 

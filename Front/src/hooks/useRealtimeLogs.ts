@@ -19,6 +19,7 @@ export function useRealtimeLogs() {
           user_join: data.camera_on + data.camera_off,
           user_leave: data.left,
           alerts_sent: data.threshold_exceeded,
+          not_joined: data.not_joined_today,
         })
       })
       .catch(() => {})
@@ -70,7 +71,7 @@ export function useRealtimeLogs() {
             user_join: payload.camera_on + payload.camera_off,
             user_leave: payload.left,
             alerts_sent: payload.threshold_exceeded,
-            errors: 0,
+            not_joined: payload.not_joined_today ?? 0,
           }
           updateStats(newStats)
           break

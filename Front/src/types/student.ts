@@ -9,6 +9,7 @@ export interface Student {
   is_absent: boolean
   absent_type?: 'leave' | 'early_leave' | null
   alert_count: number
+  not_joined?: boolean
 }
 
 export interface PaginatedResponse<T> {

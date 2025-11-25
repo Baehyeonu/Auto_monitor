@@ -27,7 +27,7 @@ const initialStats: LogStats = {
   user_join: 0,
   user_leave: 0,
   alerts_sent: 0,
-  errors: 0,
+  not_joined: 0,
 }
 
 const filterLogs = (logs: LogEntry[], filter: LogFilter): LogEntry[] => {

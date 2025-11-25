@@ -13,6 +13,7 @@ from api.schemas.student import (
 )
 from api.schemas.response import PaginatedResponse
 from services.admin_manager import admin_manager
+from api.routes.settings import wait_for_system_instance
 
 
 router = APIRouter()
@@ -37,6 +38,11 @@ async def get_students(
     if is_admin_bool is not None:
         students = [s for s in students if s.is_admin == is_admin_bool]
     
+    joined_today = set()
+    system = await wait_for_system_instance(timeout=2)
+    if system and system.slack_listener:
+        joined_today = system.slack_listener.get_joined_students_today()
+    
     filtered_students = students
     
     if status:
@@ -47,7 +53,7 @@ async def get_students(
         elif status == "left":
             filtered_students = [s for s in filtered_students if s.last_leave_time is not None]
         elif status == "not_joined":
-            pass  # TODO: joined_today 로직 필요
+            filtered_students = [s for s in filtered_students if s.id not in joined_today and s.last_leave_time is None]
     
     if search:
         filtered_students = [s for s in filtered_students if search.lower() in s.zep_name.lower()]
@@ -57,8 +63,29 @@ async def get_students(
     end = start + limit
     paginated = filtered_students[start:end]
     
+    result_data = []
+    for student in paginated:
+        student_dict = {
+            "id": student.id,
+            "zep_name": student.zep_name,
+            "discord_id": student.discord_id,
+            "is_admin": student.is_admin,
+            "is_cam_on": student.is_cam_on,
+            "last_status_change": student.last_status_change,
+            "last_alert_sent": student.last_alert_sent,
+            "alert_count": student.alert_count,
+            "response_status": student.response_status,
+            "is_absent": student.is_absent,
+            "absent_type": student.absent_type,
+            "last_leave_time": student.last_leave_time,
+            "created_at": student.created_at,
+            "updated_at": student.updated_at,
+            "not_joined": student.id not in joined_today and student.last_leave_time is None
+        }
+        result_data.append(student_dict)
+    
     return {
-        "data": paginated,
+        "data": result_data,
         "total": total,
         "page": page,
         "limit": limit

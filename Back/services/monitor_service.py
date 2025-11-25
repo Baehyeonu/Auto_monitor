@@ -465,13 +465,17 @@ class MonitorService:
         camera_on = 0
         camera_off = 0
         left = 0
+        not_joined = 0
         threshold_exceeded = 0
         
         non_admin_students = [s for s in students if not s.is_admin]
+        joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
         
         for student in non_admin_students:
             if student.last_leave_time:
                 left += 1
+            elif student.id not in joined_today and student.last_leave_time is None:
+                not_joined += 1
             elif student.is_cam_on:
                 camera_on += 1
             else:
@@ -489,7 +493,7 @@ class MonitorService:
             "camera_on": camera_on,
             "camera_off": camera_off,
             "left": left,
-            "not_joined_today": 0,
+            "not_joined_today": not_joined,
             "threshold_exceeded": threshold_exceeded,
             "last_updated": now.isoformat()
         }
