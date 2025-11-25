@@ -24,7 +24,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
     class_end_time: settings.class_end_time,
     lunch_start_time: settings.lunch_start_time,
     lunch_end_time: settings.lunch_end_time,
-    daily_reset_time: settings.daily_reset_time || '',
   })
 
   const handleEdit = () => {
@@ -34,7 +33,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
       class_end_time: settings.class_end_time,
       lunch_start_time: settings.lunch_start_time,
       lunch_end_time: settings.lunch_end_time,
-      daily_reset_time: settings.daily_reset_time || '',
     })
   }
 
@@ -45,7 +43,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
       class_end_time: settings.class_end_time,
       lunch_start_time: settings.lunch_start_time,
       lunch_end_time: settings.lunch_end_time,
-      daily_reset_time: settings.daily_reset_time || '',
     })
   }
 
@@ -55,7 +52,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
       class_end_time: formData.class_end_time,
       lunch_start_time: formData.lunch_start_time,
       lunch_end_time: formData.lunch_end_time,
-      daily_reset_time: formData.daily_reset_time || null,
     })
     setIsEditing(false)
   }
@@ -70,11 +66,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
       label: '점심 시간', 
       value: `${settings.lunch_start_time} ~ ${settings.lunch_end_time}`,
       fields: ['lunch_start_time', 'lunch_end_time']
-    },
-    { 
-      label: '일일 초기화 시간', 
-      value: settings.daily_reset_time || '설정 안 됨',
-      fields: ['daily_reset_time']
     },
   ]
 
@@ -138,17 +129,6 @@ export function ScheduleSettings({ settings, isSaving, onSave }: Props) {
                 value={formData.lunch_end_time}
                 onChange={(e) => setFormData({ ...formData, lunch_end_time: e.target.value })}
               />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">일일 초기화 시간</label>
-              <Input
-                type="time"
-                value={formData.daily_reset_time}
-                onChange={(e) => setFormData({ ...formData, daily_reset_time: e.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                매일 지정된 시간에 모든 학생의 상태를 초기화합니다.
-              </p>
             </div>
             <div className="flex gap-2">
               <Button onClick={handleSave} disabled={isSaving} className="flex-1">

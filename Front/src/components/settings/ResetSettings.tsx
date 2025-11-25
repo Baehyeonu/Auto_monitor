@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Play, Pause, RotateCcw } from 'lucide-react'
+import { Play, Pause, RotateCcw, MoreVertical, Check, X } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import type { SettingsResponse } from '@/types/settings'
 
 interface Props {
@@ -13,6 +19,7 @@ export function ResetSettings({ settings }: Props) {
   const [isResetting, setIsResetting] = useState(false)
   const [isPausing, setIsPausing] = useState(false)
   const [isResuming, setIsResuming] = useState(false)
+  const [isEditingTime, setIsEditingTime] = useState(false)
   const [isSavingTime, setIsSavingTime] = useState(false)
   const [resetTime, setResetTime] = useState(settings.daily_reset_time || '')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -114,12 +121,19 @@ export function ResetSettings({ settings }: Props) {
     }
   }
 
-  const handleSaveResetTime = async () => {
-    if (!resetTime) {
-      setMessage({ type: 'error', text: '초기화 시간을 선택해 주세요.' })
-      return
-    }
+  const handleEditTime = () => {
+    setIsEditingTime(true)
+    setResetTime(settings.daily_reset_time || '')
+    setMessage(null)
+  }
 
+  const handleCancelTime = () => {
+    setIsEditingTime(false)
+    setResetTime(settings.daily_reset_time || '')
+    setMessage(null)
+  }
+
+  const handleSaveResetTime = async () => {
     setIsSavingTime(true)
     setMessage(null)
 
@@ -140,6 +154,7 @@ export function ResetSettings({ settings }: Props) {
       }
 
       setMessage({ type: 'success', text: '초기화 시간이 저장되었습니다.' })
+      setIsEditingTime(false)
       refreshPage()
     } catch (error) {
       setMessage({
@@ -153,8 +168,20 @@ export function ResetSettings({ settings }: Props) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>초기화 및 제어</CardTitle>
+        {!isEditingTime && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleEditTime}>초기화 시간 수정</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {message && (
@@ -172,22 +199,48 @@ export function ResetSettings({ settings }: Props) {
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">일일 초기화 시간</label>
-            <Input
-              type="time"
-              value={resetTime}
-              onChange={(e) => setResetTime(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              매일 지정된 시간에 모든 학생의 상태와 알림 기록을 초기화합니다.
-            </p>
-            <Button
-              variant="outline"
-              onClick={handleSaveResetTime}
-              disabled={isSavingTime}
-              className="w-full"
-            >
-              {isSavingTime ? '저장 중...' : '초기화 시간 저장'}
-            </Button>
+            {!isEditingTime ? (
+              <>
+                <div className="flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm">
+                  <span className={settings.daily_reset_time ? '' : 'text-muted-foreground'}>
+                    {settings.daily_reset_time || '설정 안 됨'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  매일 지정된 시간에 모든 학생의 상태와 알림 기록을 초기화합니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  type="time"
+                  value={resetTime}
+                  onChange={(e) => setResetTime(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  매일 지정된 시간에 모든 학생의 상태와 알림 기록을 초기화합니다.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleSaveResetTime}
+                    disabled={isSavingTime}
+                    className="flex-1"
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    {isSavingTime ? '저장 중...' : '저장'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleCancelTime}
+                    disabled={isSavingTime}
+                    className="flex-1"
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    취소
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">
