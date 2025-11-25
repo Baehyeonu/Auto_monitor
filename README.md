@@ -105,11 +105,15 @@ docker-compose stop
 # 컨테이너 중지 및 제거
 docker-compose down
 
-# 컨테이너 재시작
+# 컨테이너 재시작 (기존 이미지 사용)
 docker-compose restart
 
-# 컨테이너 재빌드 (코드 변경 후)
+# ⭐ 코드 변경 후 재빌드 (중요!)
 docker-compose up -d --build
+
+# 특정 서비스만 재빌드
+docker-compose up -d --build backend   # 백엔드만
+docker-compose up -d --build frontend  # 프론트엔드만
 ```
 
 ### 로컬 개발 환경

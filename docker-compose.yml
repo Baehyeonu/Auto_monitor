@@ -9,11 +9,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./Back/students.db:/app/students.db
+      - ./Back/data:/app/data
       - ./Back/.env:/app/.env
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///students.db
+      - DATABASE_URL=sqlite+aiosqlite:///data/students.db
       - TZ=Asia/Seoul
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
     networks:
       - monitor_network
