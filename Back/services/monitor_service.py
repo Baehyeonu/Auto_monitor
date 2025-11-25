@@ -43,6 +43,7 @@ class MonitorService:
         self.is_dm_paused = False  # DM 발송 일시정지 플래그
         self.is_monitoring_paused = False  # 모니터링 일시정지 플래그 (수동 제어)
         self.holiday_checker = HolidayChecker()  # 주말/공휴일 체크
+        self.last_class_time_log = None  # 마지막 수업 시간 로그 시간 (스팸 방지)
     
     def set_slack_listener(self, slack_listener):
         """SlackListener 참조 설정 (순환 참조 방지)"""
@@ -151,18 +152,32 @@ class MonitorService:
         
         # 수업 시작 전이면 False
         if current_time < class_start:
+            # 5분마다 한 번만 로그 출력 (스팸 방지)
+            if self.last_class_time_log is None or (now - self.last_class_time_log).total_seconds() >= 300:
+                print(f"⏰ 수업 시작 전 ({current_time_str} < {config.CLASS_START_TIME}) - 알림 차단")
+                self.last_class_time_log = now
             return False
         
         # 수업 종료 후면 False
         if current_time > class_end:
-            print(f"⏰ 수업 종료 시간 이후 ({current_time_str} > {config.CLASS_END_TIME}) - 알림 차단")
+            # 5분마다 한 번만 로그 출력 (스팸 방지)
+            if self.last_class_time_log is None or (now - self.last_class_time_log).total_seconds() >= 300:
+                print(f"⏰ 수업 종료 시간 이후 ({current_time_str} > {config.CLASS_END_TIME}) - 알림 차단")
+                self.last_class_time_log = now
             return False
         
         # 점심 시간이면 False
         if lunch_start <= current_time <= lunch_end:
+            # 5분마다 한 번만 로그 출력 (스팸 방지)
+            if self.last_class_time_log is None or (now - self.last_class_time_log).total_seconds() >= 300:
+                print(f"🍽️ 점심 시간 ({current_time_str}) - 알림 차단")
+                self.last_class_time_log = now
             return False
         
         # 위 조건을 모두 통과하면 수업 시간
+        # 수업 시간일 때는 로그 초기화 (다음 비수업 시간에 로그 출력)
+        if self.last_class_time_log is not None:
+            self.last_class_time_log = None
         return True
     
     async def _check_students(self):
@@ -184,10 +199,10 @@ class MonitorService:
             if elapsed < self.warmup_minutes:
                 return
         
-        # 수업 시간 체크 (가장 먼저 체크 - 수업 시간이 아니면 모든 알림 중단)
+        # ⭐ 수업 시간 체크 (가장 먼저 체크 - 수업 시간이 아니면 모든 체크 중단)
         is_class_time = self._is_class_time()
         if not is_class_time:
-            # 수업 시간이 아니면 모든 알림 중단 (로그는 _is_class_time()에서 출력)
+            # 수업 시간이 아니면 모든 체크 중단 (로그는 _is_class_time()에서 5분마다 출력)
             return
         
         # 점심 시간 시작/종료 체크 및 시간 초기화
@@ -216,10 +231,10 @@ class MonitorService:
         if is_lunch_time:
             return
         
-        # 접속 종료 학생 체크 (카메라 상태와 무관하게 항상 수행)
+        # ⭐ 접속 종료 학생 체크 (수업 시간에만 실행됨)
         await self._check_left_students()
         
-        # 복귀 요청 모니터링
+        # ⭐ 복귀 요청 모니터링 (수업 시간에만 실행됨)
         await self._check_return_requests()
         
         # 카메라가 임계값 이상 꺼진 학생들 조회 (초기화 이후 접속한 학생만)
@@ -318,9 +333,12 @@ class MonitorService:
         
     async def _check_left_students(self):
         """접속 종료 후 복귀하지 않은 학생들 체크"""
-        # 수업 시간이 아니면 체크 안 함 (카메라 알림과 동일한 시간대 사용)
-        if not self._is_class_time():
-            return
+        # ⭐ 이 함수는 _check_students()에서 수업 시간 체크 후 호출되므로
+        # 여기서는 추가 체크 불필요 (하지만 안전을 위해 주석 처리)
+        
+        # 수업 시간이 아니면 체크 안 함
+        # if not self._is_class_time():
+        #     return
         
         # 접속 종료 알림은 실시간 이벤트이므로 워밍업 시간 불필요
         # (last_leave_time은 접속 종료 시점에 기록되므로 프로그램 시작 전 데이터가 아님)
@@ -419,9 +437,12 @@ class MonitorService:
     
     async def _check_return_requests(self):
         """복귀 요청 후 접속하지 않은 학생들 체크"""
+        # ⭐ 이 함수는 _check_students()에서 수업 시간 체크 후 호출되므로
+        # 여기서는 추가 체크 불필요 (하지만 안전을 위해 주석 처리)
+        
         # 수업 시간이 아니면 체크 안 함
-        if not self._is_class_time():
-            return
+        # if not self._is_class_time():
+        #     return
         
         # 복귀 요청 후 임계값 이상 지난 학생들 조회
         students = await self.db_service.get_students_with_return_request(
