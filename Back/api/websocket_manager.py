@@ -20,6 +20,8 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.add(websocket)
         
+        print(f"📡 [WebSocket] 새 연결 수락 (총 연결: {len(self.active_connections)}개)", flush=True)
+        
         await self.send_personal_message(websocket, {
             "type": "CONNECTED",
             "payload": {
@@ -31,8 +33,12 @@ class ConnectionManager:
     
     def disconnect(self, websocket: WebSocket):
         """연결 해제"""
+        was_subscriber = websocket in self.dashboard_subscribers
         self.active_connections.discard(websocket)
         self.dashboard_subscribers.discard(websocket)
+        
+        subscriber_info = " (대시보드 구독자)" if was_subscriber else ""
+        print(f"📡 [WebSocket] 연결 해제{subscriber_info} (남은 연결: {len(self.active_connections)}개, 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
     
     async def handle_message(self, websocket: WebSocket, data: dict):
         """클라이언트 메시지 처리"""
@@ -40,9 +46,11 @@ class ConnectionManager:
         
         if msg_type == "SUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.add(websocket)
+            print(f"📡 [WebSocket] 대시보드 구독 추가 (총 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
         
         elif msg_type == "UNSUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.discard(websocket)
+            print(f"📡 [WebSocket] 대시보드 구독 해제 (남은 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
         
         elif msg_type == "PING":
             await self.send_personal_message(websocket, {
@@ -101,6 +109,11 @@ class ConnectionManager:
             },
             "timestamp": datetime.now().isoformat()
         }
+        subscriber_count = len(self.dashboard_subscribers)
+        if subscriber_count == 0:
+            print(f"    ⚠️ [WebSocket] 구독자 없음 - 메시지 전송 안 됨 (구독자: {subscriber_count}명)", flush=True)
+        else:
+            print(f"    📡 [WebSocket] 구독자 {subscriber_count}명에게 전송 중...", flush=True)
         await self.broadcast_to_dashboard(message)
     
     async def broadcast_new_alert(

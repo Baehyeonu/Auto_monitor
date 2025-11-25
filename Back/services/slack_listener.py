@@ -91,11 +91,11 @@ class SlackListener:
         # 마지막 이벤트와 시간 차이 계산
         time_diff = abs(message_ts - last_time)  # 절대값 사용 (타임스탬프가 역순일 수도 있음)
         
-        # ⭐ 0.01초로 단축 (너무 짧은 간격의 진짜 중복만 필터링)
+        # ⭐ [핵심 수정] self.duplicate_threshold 사용 (하드코딩 제거)
         if time_diff < self.duplicate_threshold:
-            # 0.01초 이내 중복 이벤트 (진짜 중복만 필터링)
-            # [수정] 로그에 임계값 정보를 추가하여 디버깅이 쉽도록 개선
-            print(f"    ⏭️ 중복 무시: {event_type} (ID: {student_id}, {time_diff:.3f}초 < {self.duplicate_threshold}초)", flush=True)
+            # self.duplicate_threshold 이내 중복 이벤트만 필터링
+            # 로그 출력도 업데이트된 임계값을 반영하도록 수정
+            print(f"    ⏭️ 중복 무시: {event_type} (ID: {student_id}, {time_diff:.3f}초 < {self.duplicate_threshold:.2f}초)", flush=True)
             return True
         
         # 중복 아님 - 타임스탬프 업데이트
@@ -113,12 +113,15 @@ class SlackListener:
                 is_cam_on=is_cam_on,
                 elapsed_minutes=0
             )
+            print(f"    📡 [브로드캐스트] {zep_name} {event_type} → WebSocket 전송 완료", flush=True)
             # ⭐ 대시보드 업데이트 제거 (성능 저하 원인)
             # - 주기적 업데이트(5초마다)가 이미 있음
             # - 매 상태 변경마다 전체 학생 조회는 불필요하고 블로킹 발생
             # - 프론트엔드 추가 전에는 이런 브로드캐스트가 없었음
         except Exception as e:
-            print(f"    ❌ 브로드캐스트 오류: {e}", flush=True)
+            print(f"    ❌ [브로드캐스트 오류] {e}", flush=True)
+            import traceback
+            traceback.print_exc()
     
     def _setup_handlers(self):
         @self.app.event("message")
@@ -141,7 +144,9 @@ class SlackListener:
     async def _process_message_async(self, text: str, message_ts: float):
         """메시지를 비동기로 처리 (블로킹 없음)"""
         try:
+            # ⭐ 점검 1: MonitorService 초기화 상태 확인
             if self.monitor_service and self.monitor_service.is_resetting:
+                print(f"    ⏸️ [Skip] MonitorService 초기화(Resetting) 중 메시지 무시: {text[:50]}...", flush=True)
                 return
             
             # ⭐ 프로그램 시작 이전 메시지는 무시하되, 최근 1분 이내는 처리
@@ -149,10 +154,14 @@ class SlackListener:
             if message_ts < self.start_time:
                 # 1분(60초) 이내 메시지는 처리 (프로그램 재시작 직후 놓친 메시지 처리)
                 if (current_time - message_ts) > 60:
+                    print(f"    ⏭️ [Skip] 프로그램 시작 이전 메시지 (1분 초과): {text[:50]}...", flush=True)
                     return
             
             # 메시지 타임스탬프를 datetime으로 변환
             message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
+            
+            # ⭐ 점검 2: 정규식 매칭 확인
+            matched = False
             
             match_on = self.pattern_cam_on.search(text)
             if match_on:
@@ -160,6 +169,7 @@ class SlackListener:
                 zep_name = self._extract_name_only(zep_name_raw)
                 print(f"    ✅ ON: {zep_name_raw} → {zep_name}", flush=True)
                 await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
+                matched = True
                 return
             
             match_off = self.pattern_cam_off.search(text)
@@ -168,6 +178,7 @@ class SlackListener:
                 zep_name = self._extract_name_only(zep_name_raw)
                 print(f"    ✅ OFF: {zep_name_raw} → {zep_name}", flush=True)
                 await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
+                matched = True
                 return
             
             match_leave = self.pattern_leave.search(text)
@@ -176,6 +187,7 @@ class SlackListener:
                 zep_name = self._extract_name_only(zep_name_raw)
                 print(f"    ✅ 퇴장: {zep_name_raw} → {zep_name}", flush=True)
                 await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
+                matched = True
                 return
             
             match_join = self.pattern_join.search(text)
@@ -184,7 +196,12 @@ class SlackListener:
                 zep_name = self._extract_name_only(zep_name_raw)
                 print(f"    ✅ 입장: {zep_name_raw} → {zep_name}", flush=True)
                 await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
+                matched = True
                 return
+            
+            # ⭐ 점검 2: 정규식 매칭 실패 로그
+            if not matched:
+                print(f"    ❓ [No Match] ON/OFF/입장/퇴장 패턴에 매칭 실패: {text}", flush=True)
         except Exception as e:
             # 예외 발생 시 로그 출력 (누락 방지)
             print(f"    ❌ 메시지 처리 오류: {e}", flush=True)
@@ -202,6 +219,7 @@ class SlackListener:
                     break
             
             if not student:
+                print(f"    ⚠️ [Skip] 학생 없음: {zep_name}", flush=True)
                 return
             
             # ⭐ 중복 이벤트 체크
@@ -215,6 +233,7 @@ class SlackListener:
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if not success:
+                print(f"    ❌ [DB 실패] 카메라 ON 업데이트 실패: {matched_name}", flush=True)
                 return
             
             # ⭐ 성공 시 항상 브로드캐스트 (DB 재조회 제거 - student 객체 직접 사용)
@@ -229,8 +248,11 @@ class SlackListener:
                     event_type='camera_on',
                     is_cam_on=True
                 ))
+                print(f"    ✅ [완료] {student.zep_name} 카메라 ON (ID: {student.id})", flush=True)
         except Exception as e:
             print(f"    ❌ 카메라 ON 처리 오류: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
     
     async def _handle_camera_off(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
@@ -243,6 +265,7 @@ class SlackListener:
                     break
             
             if not student:
+                print(f"    ⚠️ [Skip] 학생 없음: {zep_name}", flush=True)
                 return
             
             # ⭐ 중복 이벤트 체크
@@ -253,6 +276,7 @@ class SlackListener:
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if not success:
+                print(f"    ❌ [DB 실패] 카메라 OFF 업데이트 실패: {matched_name}", flush=True)
                 return
             
             # ⭐ 성공 시 항상 브로드캐스트 (DB 재조회 제거 - student 객체 직접 사용)
@@ -267,8 +291,11 @@ class SlackListener:
                     event_type='camera_off',
                     is_cam_on=False
                 ))
+                print(f"    ✅ [완료] {student.zep_name} 카메라 OFF (ID: {student.id})", flush=True)
         except Exception as e:
             print(f"    ❌ 카메라 OFF 처리 오류: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
     
     async def _handle_user_join(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
