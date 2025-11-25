@@ -27,7 +27,9 @@ class SlackListener:
         # ⭐ 학생별 마지막 이벤트 타임스탬프 저장 (중복 방지)
         # key: (student_id, event_type), value: timestamp
         self.last_event_times: Dict[Tuple[int, str], float] = {}
-        self.duplicate_threshold = 0.3  # 0.3초 이내 중복 이벤트만 무시 (더 짧게)
+        # [핵심 수정] 0.3초는 너무 길어 빠른 ON/OFF를 무시합니다.
+        # 0.01초로 대폭 줄여 진짜 중복만 필터링하도록 수정합니다.
+        self.duplicate_threshold = 0.01  # 0.01초 이내 중복 이벤트만 무시 (대폭 단축)
         
         self.pattern_cam_on = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:켰습니다|on\s*되었습니다)")
         self.pattern_cam_off = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:껐습니다|off\s*되었습니다)")
@@ -68,7 +70,7 @@ class SlackListener:
     
     def _is_duplicate_event(self, student_id: int, event_type: str, message_ts: float) -> bool:
         """
-        중복 이벤트 체크 (0.3초 이내 동일 이벤트만 무시 - 더 짧게)
+        중복 이벤트 체크 (0.01초 이내 동일 이벤트만 무시 - 대폭 단축)
         
         Args:
             student_id: 학생 ID
@@ -89,10 +91,11 @@ class SlackListener:
         # 마지막 이벤트와 시간 차이 계산
         time_diff = abs(message_ts - last_time)  # 절대값 사용 (타임스탬프가 역순일 수도 있음)
         
-        # ⭐ 0.3초로 단축 (너무 짧은 간격의 진짜 중복만 필터링)
-        if time_diff < 0.3:
-            # 0.3초 이내 중복 이벤트 (진짜 중복만 필터링)
-            print(f"    ⏭️ 중복 무시: {event_type} (ID: {student_id}, {time_diff:.2f}초)", flush=True)
+        # ⭐ 0.01초로 단축 (너무 짧은 간격의 진짜 중복만 필터링)
+        if time_diff < self.duplicate_threshold:
+            # 0.01초 이내 중복 이벤트 (진짜 중복만 필터링)
+            # [수정] 로그에 임계값 정보를 추가하여 디버깅이 쉽도록 개선
+            print(f"    ⏭️ 중복 무시: {event_type} (ID: {student_id}, {time_diff:.3f}초 < {self.duplicate_threshold}초)", flush=True)
             return True
         
         # 중복 아님 - 타임스탬프 업데이트

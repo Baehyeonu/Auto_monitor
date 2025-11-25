@@ -42,6 +42,8 @@ export function useRealtimeLogs() {
             elapsed_minutes?: number
           }
           addLog(createMonitorLog(payload))
+          // ⭐ 상태 변경 시 통계도 즉시 업데이트 (실시간 반영)
+          loadDashboardData()
           break
         }
         case 'NEW_ALERT': {
