@@ -1,0 +1,11 @@
+{
+  "camera_off_threshold": 20,
+  "alert_cooldown": 10,
+  "check_interval": 30,
+  "leave_alert_threshold": 30,
+  "class_start_time": "10:10",
+  "class_end_time": "18:40",
+  "lunch_start_time": "11:50",
+  "lunch_end_time": "12:50",
+  "daily_reset_time": "23:59"
+}
