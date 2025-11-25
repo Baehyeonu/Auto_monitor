@@ -1,10 +1,9 @@
 """
-SQLite(students.db)의 데이터를 Railway Postgres로 이관하는 스크립트
+SQLite(students.db)의 데이터를 Postgres로 이관하는 스크립트
 
 실행 전 준비 사항
-1. Railway에서 Postgres 서비스를 생성하고 Auto_monitor 서비스에 연결
-2. Auto_monitor 서비스 Variables에 DATABASE_URL 추가
-3. 로컬에서 `pip install asyncpg` (requirements.txt에도 포함되어 있어야 함)
+1. Postgres 데이터베이스 준비 및 DATABASE_URL 환경변수 설정
+2. 로컬에서 `pip install asyncpg` (requirements.txt에도 포함되어 있어야 함)
 """
 from __future__ import annotations
 

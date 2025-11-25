@@ -23,9 +23,6 @@ export function DiscordSettings({ settings }: Props) {
           <span>관리자 등록 수</span>
           <span className="font-semibold">{settings.admin_count}명</span>
         </div>
-        <p className="text-xs text-muted-foreground pt-2 border-t border-border/60">
-          ⚠️ Discord 설정은 Railway 환경변수로 관리됩니다. 변경은 Railway 대시보드에서만 가능합니다.
-        </p>
       </CardContent>
     </Card>
   )

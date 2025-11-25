@@ -11,9 +11,7 @@ from config import config
 from .models import Base
 
 
-# Railway에서는 DATABASE_PRIVATE_URL이 자동으로 제공되므로 우선 사용
-database_url = os.getenv("DATABASE_PRIVATE_URL") or config.DATABASE_URL
-# (로컬에서 public URL을 사용해야 할 경우 DATABASE_URL에 직접 설정)
+database_url = config.DATABASE_URL
 url = make_url(database_url)
 engine_kwargs = {"echo": False}
 
