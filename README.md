@@ -72,6 +72,46 @@ API 서버: http://localhost:8000
 - ✅ 백엔드와 프론트엔드 자동 연동
 - ✅ 프로덕션 환경과 동일한 실행 환경
 
+#### 로그 확인
+
+```bash
+# 모든 서비스 로그 확인
+docker-compose logs
+
+# 실시간 로그 확인 (tail -f)
+docker-compose logs -f
+
+# 특정 서비스만 로그 확인
+docker-compose logs backend    # 백엔드만
+docker-compose logs frontend   # 프론트엔드만
+
+# 최근 100줄만 보기
+docker-compose logs --tail=100
+
+# 컨테이너 이름으로 직접 확인
+docker logs auto_monitor_backend
+docker logs auto_monitor_frontend
+```
+
+#### 기타 Docker 명령어
+
+```bash
+# 컨테이너 상태 확인
+docker-compose ps
+
+# 컨테이너 중지
+docker-compose stop
+
+# 컨테이너 중지 및 제거
+docker-compose down
+
+# 컨테이너 재시작
+docker-compose restart
+
+# 컨테이너 재빌드 (코드 변경 후)
+docker-compose up -d --build
+```
+
 ### 로컬 개발 환경
 
 #### 백엔드 설정
