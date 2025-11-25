@@ -31,6 +31,10 @@ class SlackListener:
         # 0.01초로 대폭 줄여 진짜 중복만 필터링하도록 수정합니다.
         self.duplicate_threshold = 0.01  # 0.01초 이내 중복 이벤트만 무시 (대폭 단축)
         
+        # ⭐ [추가] 학생 정보 캐시 (DB 조회 없이 즉시 찾기 위함)
+        # key: zep_name, value: student_id
+        self.student_cache: Dict[str, int] = {}
+        
         self.pattern_cam_on = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:켰습니다|on\s*되었습니다)")
         self.pattern_cam_off = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:껐습니다|off\s*되었습니다)")
         self.pattern_leave = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님이?\s*.*(퇴장|접속\s*종료|접속을\s*종료|나갔습니다)(?:했습니다)?")
@@ -101,6 +105,16 @@ class SlackListener:
         # 중복 아님 - 타임스탬프 업데이트
         self.last_event_times[key] = message_ts
         return False
+    
+    # ⭐ [추가] 프로그램 시작 시 학생 명단을 메모리에 로드하는 함수
+    async def _refresh_student_cache(self):
+        """학생 명단을 메모리에 캐싱 (DB 조회 속도 개선)"""
+        try:
+            students = await self.db_service.get_all_students()
+            self.student_cache = {s.zep_name: s.id for s in students}
+            print(f"    💾 [Cache] 학생 {len(students)}명 명단 메모리 로드 완료", flush=True)
+        except Exception as e:
+            print(f"    ❌ [Cache] 학생 명단 로드 실패: {e}", flush=True)
     
     async def _broadcast_status_change(self, student_id: int, zep_name: str, event_type: str, is_cam_on: bool):
         """브로드캐스트를 비동기로 실행하는 헬퍼 함수 (블로킹 방지)"""
@@ -210,45 +224,54 @@ class SlackListener:
     
     async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
-            student = None
+            # ⭐ 1. 캐시에서 학생 찾기 (DB 조회 X -> 속도 0.0001초)
+            student_id = None
             matched_name = zep_name
+            
+            # 추출된 이름들로 캐시 검색
             for name in self._extract_all_korean_names(zep_name_raw):
-                student = await self.db_service.get_student_by_zep_name(name)
-                if student:
+                if name in self.student_cache:
+                    student_id = self.student_cache[name]
                     matched_name = name
                     break
             
-            if not student:
+            # 캐시에 없으면 DB에서 한 번 더 확인 (신규 학생일 수 있음)
+            if not student_id:
+                student = await self.db_service.get_student_by_zep_name(zep_name)
+                if student:
+                    student_id = student.id
+                    matched_name = student.zep_name
+                    # 찾았으면 캐시에 등록
+                    self.student_cache[matched_name] = student_id
+            
+            if not student_id:
                 print(f"    ⚠️ [Skip] 학생 없음: {zep_name}", flush=True)
                 return
             
-            # ⭐ 중복 이벤트 체크
-            if self._is_duplicate_event(student.id, "camera_on", message_ts):
+            # ⭐ 2. 중복 이벤트 체크 (매우 빠름)
+            if self._is_duplicate_event(student_id, "camera_on", message_ts):
                 return
             
-            if student.is_absent:
-                await self.db_service.clear_absent_status(student.id)
-            
-            # DB 업데이트
+            # ⭐ 3. DB 업데이트 (여기서만 DB 접근)
+            # absent 상태 해제 등이 필요하므로 DB 작업을 수행하지만,
+            # 이미 중복 체크를 통과했으므로 안전함
+            await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if not success:
                 print(f"    ❌ [DB 실패] 카메라 ON 업데이트 실패: {matched_name}", flush=True)
                 return
             
-            # ⭐ 성공 시 항상 브로드캐스트 (DB 재조회 제거 - student 객체 직접 사용)
+            # ⭐ 4. 성공 시 항상 브로드캐스트
             if not self.is_restoring:
-                # student 객체의 상태를 직접 업데이트해서 사용 (DB 재조회 불필요)
-                student.is_cam_on = True
-                
                 # 브로드캐스트를 비동기 태스크로 실행 (블로킹 방지)
                 asyncio.create_task(self._broadcast_status_change(
-                    student_id=student.id,
-                    zep_name=student.zep_name,
+                    student_id=student_id,
+                    zep_name=matched_name,
                     event_type='camera_on',
                     is_cam_on=True
                 ))
-                print(f"    ✅ [완료] {student.zep_name} 카메라 ON (ID: {student.id})", flush=True)
+                print(f"    ✅ [완료] {matched_name} 카메라 ON (ID: {student_id})", flush=True)
         except Exception as e:
             print(f"    ❌ 카메라 ON 처리 오류: {e}", flush=True)
             import traceback
@@ -256,42 +279,47 @@ class SlackListener:
     
     async def _handle_camera_off(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
-            student = None
+            # ⭐ 1. 캐시에서 학생 찾기 (DB 조회 X)
+            student_id = None
             matched_name = zep_name
+            
             for name in self._extract_all_korean_names(zep_name_raw):
-                student = await self.db_service.get_student_by_zep_name(name)
-                if student:
+                if name in self.student_cache:
+                    student_id = self.student_cache[name]
                     matched_name = name
                     break
             
-            if not student:
+            if not student_id:
+                student = await self.db_service.get_student_by_zep_name(zep_name)
+                if student:
+                    student_id = student.id
+                    matched_name = student.zep_name
+                    self.student_cache[matched_name] = student_id
+            
+            if not student_id:
                 print(f"    ⚠️ [Skip] 학생 없음: {zep_name}", flush=True)
                 return
             
-            # ⭐ 중복 이벤트 체크
-            if self._is_duplicate_event(student.id, "camera_off", message_ts):
+            # ⭐ 2. 중복 이벤트 체크
+            if self._is_duplicate_event(student_id, "camera_off", message_ts):
                 return
             
-            # DB 업데이트
+            # ⭐ 3. DB 업데이트
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if not success:
                 print(f"    ❌ [DB 실패] 카메라 OFF 업데이트 실패: {matched_name}", flush=True)
                 return
             
-            # ⭐ 성공 시 항상 브로드캐스트 (DB 재조회 제거 - student 객체 직접 사용)
+            # ⭐ 4. 성공 시 항상 브로드캐스트
             if not self.is_restoring:
-                # student 객체의 상태를 직접 업데이트해서 사용 (DB 재조회 불필요)
-                student.is_cam_on = False
-                
-                # 브로드캐스트를 비동기 태스크로 실행 (블로킹 방지)
                 asyncio.create_task(self._broadcast_status_change(
-                    student_id=student.id,
-                    zep_name=student.zep_name,
+                    student_id=student_id,
+                    zep_name=matched_name,
                     event_type='camera_off',
                     is_cam_on=False
                 ))
-                print(f"    ✅ [완료] {student.zep_name} 카메라 OFF (ID: {student.id})", flush=True)
+                print(f"    ✅ [완료] {matched_name} 카메라 OFF (ID: {student_id})", flush=True)
         except Exception as e:
             print(f"    ❌ 카메라 OFF 처리 오류: {e}", flush=True)
             import traceback
@@ -299,37 +327,40 @@ class SlackListener:
     
     async def _handle_user_join(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
-            student = None
+            # ⭐ 1. 캐시에서 학생 찾기 (DB 조회 X)
+            student_id = None
             matched_name = zep_name
+            
             for name in self._extract_all_korean_names(zep_name_raw):
-                student = await self.db_service.get_student_by_zep_name(name)
-                if student:
+                if name in self.student_cache:
+                    student_id = self.student_cache[name]
                     matched_name = name
                     break
             
-            if not student:
+            if not student_id:
+                student = await self.db_service.get_student_by_zep_name(zep_name)
+                if student:
+                    student_id = student.id
+                    matched_name = student.zep_name
+                    self.student_cache[matched_name] = student_id
+            
+            if not student_id:
                 return
             
-            # ⭐ 중복 이벤트 체크
-            if self._is_duplicate_event(student.id, "user_join", message_ts):
+            # ⭐ 2. 중복 이벤트 체크
+            if self._is_duplicate_event(student_id, "user_join", message_ts):
                 return
             
-            self.joined_students_today.add(student.id)
+            self.joined_students_today.add(student_id)
             
-            if student.is_absent:
-                await self.db_service.clear_absent_status(student.id)
-            
-            await self.db_service.clear_absent_status(student.id)
+            # ⭐ 3. DB 업데이트
+            await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if success and not self.is_restoring:
-                # student 객체의 상태를 직접 업데이트해서 사용 (DB 재조회 불필요)
-                student.is_cam_on = False
-                
-                # 브로드캐스트를 비동기 태스크로 실행 (블로킹 방지)
                 asyncio.create_task(self._broadcast_status_change(
-                    student_id=student.id,
-                    zep_name=student.zep_name,
+                    student_id=student_id,
+                    zep_name=matched_name,
                     event_type='user_join',
                     is_cam_on=False
                 ))
@@ -338,34 +369,39 @@ class SlackListener:
     
     async def _handle_user_leave(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
         try:
-            student = None
+            # ⭐ 1. 캐시에서 학생 찾기 (DB 조회 X)
+            student_id = None
             matched_name = zep_name
             korean_names = self._extract_all_korean_names(zep_name_raw)
             
             for name in korean_names:
-                student = await self.db_service.get_student_by_zep_name(name)
-                if student:
+                if name in self.student_cache:
+                    student_id = self.student_cache[name]
                     matched_name = name
                     break
             
-            if not student:
+            if not student_id:
+                student = await self.db_service.get_student_by_zep_name(zep_name)
+                if student:
+                    student_id = student.id
+                    matched_name = student.zep_name
+                    self.student_cache[matched_name] = student_id
+            
+            if not student_id:
                 return
             
-            # ⭐ 중복 이벤트 체크
-            if self._is_duplicate_event(student.id, "user_leave", message_ts):
+            # ⭐ 2. 중복 이벤트 체크
+            if self._is_duplicate_event(student_id, "user_leave", message_ts):
                 return
             
-            await self.db_service.record_user_leave(student.id)
+            # ⭐ 3. DB 업데이트
+            await self.db_service.record_user_leave(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if success and not self.is_restoring:
-                # student 객체의 상태를 직접 업데이트해서 사용 (DB 재조회 불필요)
-                student.is_cam_on = False
-                
-                # 브로드캐스트를 비동기 태스크로 실행 (블로킹 방지)
                 asyncio.create_task(self._broadcast_status_change(
-                    student_id=student.id,
-                    zep_name=student.zep_name,
+                    student_id=student_id,
+                    zep_name=matched_name,
                     event_type='user_leave',
                     is_cam_on=False
                 ))
@@ -472,6 +508,9 @@ class SlackListener:
                 self.app,
                 config.SLACK_APP_TOKEN
             )
+            
+            # ⭐ 시작 시 캐시 로드 (DB 조회 속도 개선)
+            await self._refresh_student_cache()
             
             await self.restore_state_from_history(lookback_hours=24)
             await self.handler.start_async()
