@@ -42,8 +42,7 @@ export function useRealtimeLogs() {
             elapsed_minutes?: number
           }
           addLog(createMonitorLog(payload))
-          // ⭐ 상태 변경 시 통계도 즉시 업데이트 (실시간 반영)
-          loadDashboardData()
+          // DASHBOARD_UPDATE 메시지로 통계가 자동 업데이트되므로 여기서는 호출하지 않음
           break
         }
         case 'NEW_ALERT': {
@@ -95,9 +94,11 @@ export function useRealtimeLogs() {
     setConnectionState(isConnected)
   }, [isConnected, setConnectionState])
 
+  // 마운트 시에만 대시보드 데이터 로드 (WebSocket DASHBOARD_UPDATE로 실시간 업데이트됨)
   useEffect(() => {
     loadDashboardData()
-  }, [loadDashboardData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // 빈 배열로 마운트 시에만 실행
 
   function createSystemLog(eventType: string, message: string): LogEntry {
     return {

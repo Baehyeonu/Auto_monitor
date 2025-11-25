@@ -37,17 +37,14 @@ export function useWebSocket({
   const connect = useCallback(() => {
     cleanup()
     const endpoint = url ?? WS_URL
-    console.log(`[WebSocket] 연결 시도: ${endpoint}`)
     
     try {
       wsRef.current = new WebSocket(endpoint)
     } catch (error) {
-      console.error('[WebSocket] 연결 생성 실패:', error)
       return
     }
 
     wsRef.current.onopen = () => {
-      console.log(`[WebSocket] 연결 성공: ${endpoint}`)
       setIsConnected(true)
       reconnectAttemptsRef.current = 0
       onConnect?.()
@@ -64,29 +61,23 @@ export function useWebSocket({
         setLastMessage(data)
         onMessage?.(data)
       } catch (error) {
-        console.error('[WebSocket] 메시지 파싱 실패:', error)
+        // 메시지 파싱 실패 시 무시
       }
     }
 
-    wsRef.current.onclose = (event) => {
-      console.log(`[WebSocket] 연결 종료: code=${event.code}, reason=${event.reason || 'none'}`)
+    wsRef.current.onclose = () => {
       setIsConnected(false)
       onDisconnect?.()
       if (reconnectAttemptsRef.current < maxReconnectAttempts) {
         reconnectAttemptsRef.current += 1
-        console.log(`[WebSocket] 재연결 시도 ${reconnectAttemptsRef.current}/${maxReconnectAttempts}...`)
         reconnectTimeoutRef.current = window.setTimeout(
           connect,
           reconnectInterval,
         )
-      } else {
-        console.error(`[WebSocket] 최대 재연결 시도 횟수(${maxReconnectAttempts}) 초과`)
       }
     }
 
-    wsRef.current.onerror = (error) => {
-      console.error('[WebSocket] 연결 오류:', error)
-      console.error(`[WebSocket] 엔드포인트: ${endpoint}`)
+    wsRef.current.onerror = () => {
       wsRef.current?.close()
     }
   }, [

@@ -141,8 +141,7 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
       await onUpdated?.()
       setSelectedId(null)
       setSearchTerm('')
-    } catch (error) {
-      console.error(error)
+    } catch {
       alert('관리자 권한 부여에 실패했습니다.')
     } finally {
       setIsSubmitting(false)
@@ -203,8 +202,7 @@ export function AdminRegistration({ onUpdated }: AdminRegistrationProps) {
       await onUpdated?.()
       setDeleteSelectedId(null)
       setDeleteSearchTerm('')
-    } catch (error) {
-      console.error(error)
+    } catch {
       alert('관리자 권한 해제에 실패했습니다.')
     } finally {
       setIsSubmitting(false)

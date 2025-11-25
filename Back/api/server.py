@@ -18,6 +18,29 @@ app = FastAPI(
     description="ZEP 학생 모니터링 시스템 API"
 )
 
+app.state.system_instance = None
+
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 시스템 인스턴스 확인 및 대기"""
+    import asyncio
+    import main
+    
+    max_wait = 30
+    waited = 0
+    
+    while waited < max_wait:
+        try:
+            if main._system_instance is not None:
+                system = main._system_instance
+                if system.monitor_service:
+                    return
+        except Exception:
+            pass
+        
+        await asyncio.sleep(1)
+        waited += 1
+
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
@@ -37,37 +60,28 @@ app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboar
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 
-# 프론트엔드 정적 파일 서빙 (프로덕션 빌드가 있는 경우)
-# Dockerfile에서 빌드된 프론트엔드는 Back/Front/dist에 복사됨
 frontend_dist_path = Path(__file__).parent.parent / "Front" / "dist"
-# 루트 기준 경로도 확인 (로컬 개발용)
 if not frontend_dist_path.exists():
     frontend_dist_path = Path(__file__).parent.parent.parent / "Front" / "dist"
 if frontend_dist_path.exists():
-    # 정적 파일 (JS, CSS, 이미지 등)
     app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
     
-    # 루트 경로 - index.html 반환
     @app.get("/")
     async def serve_index():
         """프론트엔드 메인 페이지"""
         return FileResponse(str(frontend_dist_path / "index.html"))
     
-    # SPA 라우팅을 위한 catch-all 핸들러 (API 경로 제외)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """프론트엔드 파일 서빙 (SPA 라우팅 지원)"""
-        # API 및 WebSocket 경로는 제외 (이미 위에서 처리됨)
         if full_path.startswith("api/") or full_path.startswith("ws") or full_path == "health":
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not found")
         
-        # 파일이 존재하면 반환
         file_path = frontend_dist_path / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
         
-        # 파일이 없으면 index.html 반환 (SPA 라우팅)
         return FileResponse(str(frontend_dist_path / "index.html"))
 
 
@@ -86,6 +100,5 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.handle_message(websocket, data)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+    except Exception:
         manager.disconnect(websocket)

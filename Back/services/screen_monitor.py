@@ -95,7 +95,6 @@ class ScreenMonitor:
                 return
         
         current_time = datetime.now().strftime("%H:%M")
-        print(f"\n🔍 [{current_time}] 화면 체크 시작...")
         
         # 1. DB에서 카메라 ON 학생 조회
         camera_on_students = await self.db_service.get_camera_on_students()

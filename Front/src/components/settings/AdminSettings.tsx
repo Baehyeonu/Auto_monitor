@@ -48,8 +48,7 @@ export function AdminSettings({ onUpdated }: AdminSettingsProps) {
       } else {
         setDemoteId('')
       }
-    } catch (error) {
-      console.error(error)
+    } catch {
       alert('관리자 권한 변경에 실패했습니다.')
     } finally {
       setIsSubmitting(false)

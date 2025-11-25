@@ -40,9 +40,7 @@ class ZepMonitoringSystem:
         self.screen_monitor = None
         self.tasks = []
         self.is_running = False
-        self.is_shutting_down = False  # 종료 중 플래그
-        
-        # WebSocket 매니저 참조 저장 (다른 서비스에서 사용)
+        self.is_shutting_down = False
         self.ws_manager = manager
     
     @staticmethod
@@ -66,7 +64,6 @@ class ZepMonitoringSystem:
         print("🚀 ZEP Student Monitoring System (Slack Socket Mode)")
         print("=" * 60)
         
-        # 1. 데이터베이스 초기화
         print("📊 데이터베이스 초기화 중...")
         try:
             await init_db()
@@ -76,7 +73,6 @@ class ZepMonitoringSystem:
             print(f"❌ 데이터베이스 초기화 실패: {e}")
             raise
         
-        # 2. Discord Bot 초기화
         print("🤖 Discord Bot 초기화 중...")
         try:
             self.discord_bot = DiscordBot()
@@ -85,29 +81,24 @@ class ZepMonitoringSystem:
             print(f"❌ Discord Bot 초기화 실패: {e}")
             raise
         
-        # 3. Monitor Service 초기화 (먼저 생성 - SlackListener가 참조)
         print("👀 Monitor Service 초기화 중...")
         try:
             self.monitor_service = MonitorService(self.discord_bot)
-            # DiscordBot에 MonitorService 참조 설정 (순환 참조 해결)
             self.discord_bot.set_monitor_service(self.monitor_service)
             print("✅ Monitor Service 생성 완료")
         except Exception as e:
             print(f"❌ Monitor Service 초기화 실패: {e}")
             raise
         
-        # 4. Slack Listener 초기화 (MonitorService 참조 전달)
         print("💬 Slack Listener 초기화 중...")
         try:
             self.slack_listener = SlackListener(self.monitor_service)
-            # MonitorService에 SlackListener 참조 설정 (순환 참조 해결)
             self.monitor_service.set_slack_listener(self.slack_listener)
             print("✅ Slack Listener 생성 완료")
         except Exception as e:
             print(f"❌ Slack Listener 초기화 실패: {e}")
             raise
         
-        # 5. Screen Monitor 초기화 (선택적)
         if config.SCREEN_MONITOR_ENABLED:
             print("👁️ Screen Monitor 초기화 중...")
             try:
@@ -126,42 +117,42 @@ class ZepMonitoringSystem:
     
     async def start(self):
         """모든 서비스 시작"""
+        global _system_instance
+        
         print("\n🚀 시스템 시작 중...\n")
         
         try:
-            # Discord Bot 시작 (백그라운드)
             discord_task = asyncio.create_task(
                 self.discord_bot.start(config.DISCORD_BOT_TOKEN)
             )
             self.tasks.append(discord_task)
             
-            # Discord Bot이 준비될 때까지 대기 (약간의 대기 시간 필요)
             print("⏳ Discord Bot 연결 중...")
-            await asyncio.sleep(3)  # Bot이 시작할 시간을 줌
+            await asyncio.sleep(3)
             await self.discord_bot.wait_until_ready()
             print(f"✅ Discord Bot 준비 완료: {self.discord_bot.user.name}#{self.discord_bot.user.discriminator}")
             
-            # 관리자 정보 출력
             await self._print_admin_info()
             
-            # Slack Listener 시작 (백그라운드)
             slack_task = asyncio.create_task(self.slack_listener.start())
             self.tasks.append(slack_task)
             
-            # 잠시 대기 (Slack 연결 안정화)
             await asyncio.sleep(2)
             print("✅ Slack 연결 완료 (Socket Mode)")
             
-            # Monitor Service 시작 (백그라운드)
             monitor_task = asyncio.create_task(self.monitor_service.start())
             self.tasks.append(monitor_task)
             
-            # Screen Monitor 시작 (선택적)
             if self.screen_monitor:
                 screen_task = asyncio.create_task(self.screen_monitor.start())
                 self.tasks.append(screen_task)
             
-            # API 서버 시작 (백그라운드)
+            if _system_instance is None:
+                _system_instance = self
+            
+            from api.server import app
+            app.state.system_instance = self
+            
             api_config = uvicorn.Config(
                 app,
                 host="0.0.0.0",
@@ -176,27 +167,23 @@ class ZepMonitoringSystem:
             print("🔌 WebSocket 엔드포인트: ws://localhost:8000/ws")
             print("   📚 API 문서: http://localhost:8000/docs")
             
-            # 상태 출력
+            await asyncio.sleep(1)
+            
             self._print_status()
             
-            # 키보드 입력 핸들러 시작 (터미널 단축키)
             input_task = asyncio.create_task(self._handle_keyboard_input())
             self.tasks.append(input_task)
             
-            # 메인 루프: is_running이 False가 될 때까지 대기
             try:
                 while self.is_running:
                     await asyncio.sleep(1)
-                    # 태스크 중 하나라도 완료되면 확인
                     for task in self.tasks:
                         if task.done():
                             try:
                                 await task
-                            except Exception as e:
-                                # 예외는 무시하고 계속
+                            except Exception:
                                 pass
             except Exception as e:
-                # 예외 발생 시에도 종료 처리
                 if self.is_running:
                     print(f"\n❌ 메인 루프 오류: {e}")
             
@@ -209,7 +196,6 @@ class ZepMonitoringSystem:
     
     async def shutdown(self):
         """시스템 종료"""
-        # 이미 종료 중이면 중복 호출 방지
         if self.is_shutting_down:
             return
         
@@ -224,28 +210,24 @@ class ZepMonitoringSystem:
         
         self.is_running = False
         
-        # Screen Monitor 중지
         if self.screen_monitor:
             try:
                 await self.screen_monitor.stop()
             except Exception:
                 pass
         
-        # Monitor Service 중지
         if self.monitor_service:
             try:
                 await self.monitor_service.stop()
             except Exception:
                 pass
         
-        # Slack Listener 중지
         if self.slack_listener:
             try:
                 await self.slack_listener.stop()
             except Exception:
                 pass
         
-        # Discord Bot 종료
         if self.discord_bot:
             try:
                 await self.discord_bot.close()
@@ -253,14 +235,12 @@ class ZepMonitoringSystem:
             except Exception:
                 pass
         
-        # 모든 태스크 취소 (안전하게)
         cancelled_tasks = []
         for task in self.tasks:
             if not task.done():
                 task.cancel()
                 cancelled_tasks.append(task)
         
-        # 취소 완료 대기 (예외 무시)
         if cancelled_tasks:
             try:
                 await asyncio.gather(*cancelled_tasks, return_exceptions=True)
@@ -324,11 +304,9 @@ class ZepMonitoringSystem:
         import threading
         import queue
         
-        # 명령어 큐
         command_queue = queue.Queue()
         
         def input_thread():
-            """별도 스레드에서 입력 대기"""
             while self.is_running:
                 try:
                     line = input()
@@ -337,26 +315,21 @@ class ZepMonitoringSystem:
                 except (EOFError, KeyboardInterrupt):
                     break
                 except Exception:
-                    # 오류 발생 시 조용히 계속
                     pass
         
-        # 백그라운드 스레드 시작
         thread = threading.Thread(target=input_thread, daemon=True)
         thread.start()
         
-        # 큐에서 명령어를 가져와서 처리
         while self.is_running:
             try:
-                # 큐에 명령어가 있는지 확인 (논블로킹)
                 try:
                     command = command_queue.get_nowait()
                     await self._process_command(command)
                 except queue.Empty:
                     pass
                 
-                await asyncio.sleep(0.1)  # CPU 사용량 줄이기
-            except Exception as e:
-                # 오류 발생 시 조용히 계속
+                await asyncio.sleep(0.1)
+            except Exception:
                 await asyncio.sleep(1)
     
     async def _process_command(self, command: str):
@@ -365,8 +338,6 @@ class ZepMonitoringSystem:
         
         if command == 'q' or command == 'quit':
             print("\n⚠️ 종료 요청 수신")
-            # shutdown()을 직접 호출하지 않고 is_running을 False로 설정
-            # 메인 루프가 종료되도록 함
             self.is_running = False
             return
         
@@ -407,40 +378,31 @@ class ZepMonitoringSystem:
                 print("\n📊 등록된 학생이 없습니다.")
                 return
             
-            # 오늘 입장한 학생 목록 가져오기
             joined_today = self.slack_listener.get_joined_students_today()
             
-            # 상태별 분류
             camera_on = []
             camera_off = []
             left_students = []
             not_connected = []
             
             for student in all_students:
-                # 관리자는 카운팅에서 제외
                 if student.discord_id and self.discord_bot.is_admin(student.discord_id):
                     continue
                 
                 if student.last_leave_time:
-                    # 접속 종료한 학생
                     left_students.append(student)
                 elif student.is_cam_on:
                     camera_on.append(student)
                 else:
-                    # 카메라 OFF - 오늘 입장했는지 확인
                     if student.id in joined_today:
-                        # 오늘 입장했는데 카메라 OFF
                         camera_off.append(student)
                     else:
-                        # 오늘 입장 안 함
                         not_connected.append(student)
             
-            # 현재 시간 (표시용은 로컬 시간, 계산용은 UTC)
             now_local = datetime.now()
             now_utc = datetime.now(timezone.utc)
             current_time = now_local.strftime("%Y-%m-%d %H:%M:%S")
             
-            # 임계값 계산
             threshold = config.CAMERA_OFF_THRESHOLD
             leave_threshold = config.LEAVE_ALERT_THRESHOLD
             
@@ -453,10 +415,7 @@ class ZepMonitoringSystem:
                 if (now_utc - self._ensure_utc(s.last_leave_time)).total_seconds() / 60 >= leave_threshold
             )
             
-            # 현재 접속 중인 수강생 수 계산
             currently_connected = len(camera_on) + len(camera_off)
-            
-            # 총 등록 학생 수 (관리자 제외)
             total_students = len(camera_on) + len(camera_off) + len(left_students) + len(not_connected)
             
             print("\n" + "=" * 60)
@@ -464,7 +423,6 @@ class ZepMonitoringSystem:
             print("=" * 60)
             print()
             
-            # 모니터링 상태 표시
             today = date.today()
             checker = self.monitor_service.holiday_checker
             
@@ -476,7 +434,6 @@ class ZepMonitoringSystem:
                 print(f"   ⏸️  모니터링 상태       : 일시정지 ({reason})")
                 print()
             
-            # DM 발송 상태 표시
             if self.monitor_service.is_dm_paused:
                 print("   🔕 DM 발송 상태         : ⏸️  일시정지 중")
                 print()
@@ -505,24 +462,20 @@ class ZepMonitoringSystem:
     async def _print_off_students(self):
         """OFF 상태인 학생들만 출력 (나간 시각, 경과 시간)"""
         try:
-            # 최신 데이터 조회
             all_students = await DBService.get_all_students()
             
             if not all_students:
                 print("\n📊 등록된 학생이 없습니다.")
                 return
             
-            # 오늘 입장한 학생 목록 가져오기
             joined_today = self.slack_listener.get_joined_students_today()
             
-            # OFF 상태인 학생만 필터링
-            # 조건: 카메라 OFF + 접속 종료 안 함 + 오늘 접속함 + 관리자 제외
             off_students = [
                 s for s in all_students 
                 if not s.is_cam_on 
-                and s.last_leave_time is None  # 접속 종료한 학생 제외
-                and s.id in joined_today  # 오늘 미접속 학생 제외
-                and not (s.discord_id and self.discord_bot.is_admin(s.discord_id))  # 관리자 제외
+                and s.last_leave_time is None
+                and s.id in joined_today
+                and not (s.discord_id and self.discord_bot.is_admin(s.discord_id))
             ]
             
             if not off_students:
@@ -533,7 +486,6 @@ class ZepMonitoringSystem:
                 print()
                 return
             
-            # 현재 시간 (UTC로 계산, 로컬로 표시)
             now_local = datetime.now()
             now_utc = datetime.now(timezone.utc)
             current_time = now_local.strftime("%Y-%m-%d %H:%M:%S")
@@ -543,7 +495,6 @@ class ZepMonitoringSystem:
             print("=" * 60)
             print()
             
-            # 경과 시간 기준으로 정렬 (긴 순서대로)
             off_students.sort(
                 key=lambda s: (now_utc - self._ensure_utc(s.last_status_change)).total_seconds(),
                 reverse=True
@@ -552,35 +503,27 @@ class ZepMonitoringSystem:
             threshold = config.CAMERA_OFF_THRESHOLD
             
             for student in off_students:
-                # UTC 시간을 로컬 시간으로 변환하여 표시
                 last_change_utc = self._ensure_utc(student.last_status_change)
                 
-                # UTC를 로컬 시간으로 변환
                 try:
                     last_change_local = last_change_utc.astimezone()
                     off_time_str = last_change_local.strftime("%H:%M")
                 except:
-                    # 변환 실패 시 UTC 시간 그대로 표시
                     off_time_str = student.last_status_change.strftime("%H:%M")
                 
-                # 경과 시간 계산 (UTC 기준)
                 elapsed_minutes = int((now_utc - last_change_utc).total_seconds() / 60)
                 elapsed_hours = elapsed_minutes // 60
                 elapsed_mins = elapsed_minutes % 60
                 
-                # 경과 시간 표시 형식
                 if elapsed_hours > 0:
                     elapsed_str = f"{elapsed_hours}시간 {elapsed_mins}분"
                 else:
                     elapsed_str = f"{elapsed_minutes}분"
                 
-                # 임계값 초과 여부
                 status_icon = "⚠️" if elapsed_minutes >= threshold else "  "
                 
-                # 한 줄로 간결하게 표시
                 print(f"   {status_icon} {student.zep_name} - OFF 후 {elapsed_str} ({off_time_str}부터)")
             
-            # 요약
             exceeded_count = len([s for s in off_students 
                                  if (now_utc - self._ensure_utc(s.last_status_change)).total_seconds() / 60 >= threshold])
             
@@ -597,18 +540,16 @@ class ZepMonitoringSystem:
     async def _print_left_students(self):
         """접속 종료한 학생들만 출력 (나간 시각, 경과 시간)"""
         try:
-            # 최신 데이터 조회
             all_students = await DBService.get_all_students()
             
             if not all_students:
                 print("\n📊 등록된 학생이 없습니다.")
                 return
             
-            # 접속 종료한 학생만 필터링 (last_leave_time이 있는 학생 + 관리자 제외)
             left_students = [
                 s for s in all_students 
                 if s.last_leave_time is not None
-                and not (s.discord_id and self.discord_bot.is_admin(s.discord_id))  # 관리자 제외
+                and not (s.discord_id and self.discord_bot.is_admin(s.discord_id))
             ]
             
             if not left_students:
@@ -619,7 +560,6 @@ class ZepMonitoringSystem:
                 print()
                 return
             
-            # 현재 시간 (UTC로 계산, 로컬로 표시)
             now_local = datetime.now()
             now_utc = datetime.now(timezone.utc)
             current_time = now_local.strftime("%Y-%m-%d %H:%M:%S")
@@ -629,7 +569,6 @@ class ZepMonitoringSystem:
             print("=" * 60)
             print()
             
-            # 경과 시간 기준으로 정렬 (긴 순서대로)
             left_students.sort(
                 key=lambda s: (now_utc - self._ensure_utc(s.last_leave_time)).total_seconds() if s.last_leave_time else 0,
                 reverse=True
@@ -641,32 +580,25 @@ class ZepMonitoringSystem:
                 if not student.last_leave_time:
                     continue
                 
-                # UTC 시간을 로컬 시간으로 변환하여 표시
                 leave_time_utc = self._ensure_utc(student.last_leave_time)
                 
-                # UTC를 로컬 시간으로 변환
                 try:
                     leave_time_local = leave_time_utc.astimezone()
                     leave_time_str = leave_time_local.strftime("%H:%M")
                 except:
-                    # 변환 실패 시 UTC 시간 그대로 표시
                     leave_time_str = student.last_leave_time.strftime("%H:%M")
                 
-                # 경과 시간 계산 (UTC 기준)
                 elapsed_minutes = int((now_utc - leave_time_utc).total_seconds() / 60)
                 elapsed_hours = elapsed_minutes // 60
                 elapsed_mins = elapsed_minutes % 60
                 
-                # 경과 시간 표시 형식
                 if elapsed_hours > 0:
                     elapsed_str = f"{elapsed_hours}시간 {elapsed_mins}분"
                 else:
                     elapsed_str = f"{elapsed_minutes}분"
                 
-                # 임계값 초과 여부
                 status_icon = "⚠️" if elapsed_minutes >= threshold else "  "
                 
-                # 외출/조퇴 상태 표시
                 status_text = ""
                 if student.is_absent:
                     if student.absent_type == "leave":
@@ -674,10 +606,8 @@ class ZepMonitoringSystem:
                     elif student.absent_type == "early_leave":
                         status_text = " [조퇴]"
                 
-                # 한 줄로 간결하게 표시
                 print(f"   {status_icon} {student.zep_name}{status_text} - 종료 후 {elapsed_str} ({leave_time_str}부터)")
             
-            # 요약
             exceeded_count = len([s for s in left_students 
                                  if s.last_leave_time and 
                                  (now_utc - self._ensure_utc(s.last_leave_time)).total_seconds() / 60 >= threshold])
@@ -696,25 +626,21 @@ class ZepMonitoringSystem:
     async def _print_not_joined_students(self):
         """오늘 접속하지 않은 학생들만 출력"""
         try:
-            # 최신 데이터 조회
             all_students = await DBService.get_all_students()
             
             if not all_students:
                 print("\n📊 등록된 학생이 없습니다.")
                 return
             
-            # 오늘 입장한 학생 목록 가져오기
             joined_today = self.slack_listener.get_joined_students_today()
             
-            # 접속하지 않은 학생 필터링 (관리자 제외)
             not_joined_students = [
                 student for student in all_students
                 if student.id not in joined_today 
                 and student.last_leave_time is None
-                and not (student.discord_id and self.discord_bot.is_admin(student.discord_id))  # 관리자 제외
+                and not (student.discord_id and self.discord_bot.is_admin(student.discord_id))
             ]
             
-            # 현재 시간
             now_local = datetime.now()
             current_time = now_local.strftime("%Y-%m-%d %H:%M:%S")
             
@@ -732,11 +658,9 @@ class ZepMonitoringSystem:
             print(f"총 {len(not_joined_students)}명")
             print()
             
-            # 이름순 정렬
             not_joined_students.sort(key=lambda s: s.zep_name)
             
             for student in not_joined_students:
-                # Discord 등록 여부 표시
                 discord_status = "[Discord 미등록]" if not student.discord_id else ""
                 print(f"   • {student.zep_name} {discord_status}")
             

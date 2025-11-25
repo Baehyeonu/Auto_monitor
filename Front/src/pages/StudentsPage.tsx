@@ -36,8 +36,7 @@ export default function StudentsPage() {
       setStudentsTotal(studentsData.total)
       setAdmins(adminsData.data)
       setAdminsTotal(adminsData.total)
-    } catch (error) {
-      console.error(error)
+    } catch {
     } finally {
       setIsLoading(false)
     }
@@ -65,7 +64,6 @@ export default function StudentsPage() {
       await deleteStudent(id)
       await loadStudents()
     } catch (error) {
-      console.error('삭제 실패:', error)
       alert('삭제에 실패했습니다.')
     }
   }
@@ -239,7 +237,6 @@ function StudentDeletePanel({ onDelete, onUpdated }: DeletePanelProps) {
       setSelectedId(null)
       setSearchTerm('')
     } catch (error) {
-      console.error('삭제 실패:', error)
       alert('삭제에 실패했습니다.')
     } finally {
       setIsDeleting(false)

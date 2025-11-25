@@ -26,14 +26,15 @@ async def get_overview():
     now = datetime.now(timezone.utc)
     threshold_minutes = config.CAMERA_OFF_THRESHOLD
     
-    for student in students:
+    non_admin_students = [s for s in students if not s.is_admin]
+    
+    for student in non_admin_students:
         if student.last_leave_time:
             left += 1
         elif student.is_cam_on:
             camera_on += 1
         else:
             camera_off += 1
-            # 임계값 초과 체크
             if student.last_status_change:
                 last_change_utc = student.last_status_change
                 if last_change_utc.tzinfo is None:
@@ -43,7 +44,7 @@ async def get_overview():
                     threshold_exceeded += 1
     
     return {
-        "total_students": len(students),
+        "total_students": len(non_admin_students),
         "camera_on": camera_on,
         "camera_off": camera_off,
         "left": left,

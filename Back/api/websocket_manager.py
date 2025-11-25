@@ -10,17 +10,13 @@ import asyncio
 
 class ConnectionManager:
     def __init__(self):
-        # 활성 연결들
         self.active_connections: Set[WebSocket] = set()
-        # 대시보드 구독자들
         self.dashboard_subscribers: Set[WebSocket] = set()
     
     async def connect(self, websocket: WebSocket):
         """새 연결 수락"""
         await websocket.accept()
         self.active_connections.add(websocket)
-        
-        print(f"📡 [WebSocket] 새 연결 수락 (총 연결: {len(self.active_connections)}개)", flush=True)
         
         await self.send_personal_message(websocket, {
             "type": "CONNECTED",
@@ -33,12 +29,8 @@ class ConnectionManager:
     
     def disconnect(self, websocket: WebSocket):
         """연결 해제"""
-        was_subscriber = websocket in self.dashboard_subscribers
         self.active_connections.discard(websocket)
         self.dashboard_subscribers.discard(websocket)
-        
-        subscriber_info = " (대시보드 구독자)" if was_subscriber else ""
-        print(f"📡 [WebSocket] 연결 해제{subscriber_info} (남은 연결: {len(self.active_connections)}개, 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
     
     async def handle_message(self, websocket: WebSocket, data: dict):
         """클라이언트 메시지 처리"""
@@ -46,11 +38,9 @@ class ConnectionManager:
         
         if msg_type == "SUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.add(websocket)
-            print(f"📡 [WebSocket] 대시보드 구독 추가 (총 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
         
         elif msg_type == "UNSUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.discard(websocket)
-            print(f"📡 [WebSocket] 대시보드 구독 해제 (남은 구독자: {len(self.dashboard_subscribers)}명)", flush=True)
         
         elif msg_type == "PING":
             await self.send_personal_message(websocket, {
@@ -60,11 +50,9 @@ class ConnectionManager:
             })
         
         elif msg_type == "CHANGE_STUDENT_STATUS":
-            # 학생 상태 변경 처리
             payload = data.get("payload", {})
             student_id = payload.get("student_id")
             status = payload.get("status")
-            # TODO: DB 업데이트 로직 연결
     
     async def send_personal_message(self, websocket: WebSocket, message: dict):
         """특정 클라이언트에게 메시지 전송"""
@@ -109,11 +97,6 @@ class ConnectionManager:
             },
             "timestamp": datetime.now().isoformat()
         }
-        subscriber_count = len(self.dashboard_subscribers)
-        if subscriber_count == 0:
-            print(f"    ⚠️ [WebSocket] 구독자 없음 - 메시지 전송 안 됨 (구독자: {subscriber_count}명)", flush=True)
-        else:
-            print(f"    📡 [WebSocket] 구독자 {subscriber_count}명에게 전송 중...", flush=True)
         await self.broadcast_to_dashboard(message)
     
     async def broadcast_new_alert(
@@ -148,7 +131,6 @@ class ConnectionManager:
         await self.broadcast_to_dashboard(message)
 
 
-# 전역 매니저 인스턴스
 manager = ConnectionManager()
 
 

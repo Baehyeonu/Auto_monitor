@@ -325,6 +325,8 @@ class DBService:
         이전 실행의 데이터로 인한 오알림 방지
         (학생 등록 정보는 유지)
         
+        초기화 후 모든 학생은 "퇴장" 상태로 표시됩니다.
+        
         Returns:
             초기화 시간 (datetime)
         """
@@ -340,10 +342,10 @@ class DBService:
                     last_alert_sent=None,
                     response_status=None,
                     response_time=None,
-                    # 접속 종료 관련
+                    # 접속 종료 관련 - 초기화 시 "퇴장" 상태로 표시하기 위해 last_leave_time 설정
                     is_absent=False,
                     absent_type=None,
-                    last_leave_time=None,
+                    last_leave_time=to_naive(now),  # 초기화 시 "퇴장" 상태로 표시
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,

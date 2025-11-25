@@ -32,8 +32,7 @@ export function useSettings() {
       try {
         const freshData = await getSettings()
         setSettings(freshData)
-      } catch (refreshErr) {
-        console.error('설정 새로고침 실패:', refreshErr)
+      } catch {
       }
       throw err
     } finally {

@@ -17,10 +17,39 @@ router = APIRouter()
 def get_system_instance():
     """시스템 인스턴스 가져오기 (지연 import로 순환 참조 방지)"""
     try:
-        from main import get_system_instance as _get_system_instance
-        return _get_system_instance()
-    except ImportError:
+        import main
+        return main._system_instance
+    except (ImportError, AttributeError):
         return None
+
+
+async def wait_for_system_instance(timeout: int = 5):
+    """시스템 인스턴스가 준비될 때까지 대기"""
+    import asyncio
+    from api.server import app
+    
+    waited = 0
+    while waited < timeout:
+        try:
+            if hasattr(app, 'state') and hasattr(app.state, 'system_instance'):
+                system = app.state.system_instance
+                if system is not None and hasattr(system, 'monitor_service') and system.monitor_service is not None:
+                    return system
+        except Exception:
+            pass
+        
+        await asyncio.sleep(0.5)
+        waited += 0.5
+    
+    try:
+        if hasattr(app, 'state') and hasattr(app.state, 'system_instance'):
+            system = app.state.system_instance
+            if system and system.monitor_service:
+                return system
+    except Exception:
+        pass
+    
+    return None
 
 
 @router.get("", response_model=SettingsResponse)
@@ -46,7 +75,6 @@ async def get_settings():
 @router.put("", response_model=SettingsResponse)
 async def update_settings(data: SettingsUpdate):
     """설정 수정"""
-    # 런타임 설정 변경 (config 객체의 속성 업데이트)
     if data.camera_off_threshold is not None:
         config.CAMERA_OFF_THRESHOLD = data.camera_off_threshold
     if data.alert_cooldown is not None:
@@ -66,10 +94,8 @@ async def update_settings(data: SettingsUpdate):
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
     
-    # 설정을 디스크에 저장하여 재시작 후에도 유지
     save_persisted_settings(config)
     
-    # 업데이트된 설정 반환
     admins = await DBService.get_admin_students()
     return {
         "camera_off_threshold": config.CAMERA_OFF_THRESHOLD,
@@ -91,10 +117,8 @@ async def update_settings(data: SettingsUpdate):
 async def test_connection(type: str = Query(..., regex="^(discord|slack)$")):
     """연동 테스트"""
     if type == "discord":
-        # Discord 연결 테스트
         return {"success": True, "message": "Discord connected"}
     elif type == "slack":
-        # Slack 연결 테스트
         return {"success": True, "message": "Slack connected"}
     else:
         return {"success": False, "message": "Unknown type"}
@@ -103,18 +127,17 @@ async def test_connection(type: str = Query(..., regex="^(discord|slack)$")):
 @router.post("/reset")
 async def reset_all_status():
     """모든 학생의 상태 초기화"""
-    system = get_system_instance()
-    if not system or not system.monitor_service:
+    system = await wait_for_system_instance(timeout=5)
+    
+    if not system:
+        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다. 잠시 후 다시 시도해주세요.")
+    
+    if not system.monitor_service:
         raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
     
     try:
-        # 모든 학생의 카메라 상태 및 알림 기록 초기화
-        reset_time = datetime.now(timezone.utc)
         await DBService.reset_all_alert_status()
-        
-        # 대시보드 업데이트 브로드캐스트
         await system.monitor_service.broadcast_dashboard_update_now()
-        
         return {"success": True, "message": "초기화가 완료되었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"초기화 실패: {str(e)}")
@@ -123,8 +146,10 @@ async def reset_all_status():
 @router.post("/pause-alerts")
 async def pause_alerts():
     """알람 일시정지"""
-    system = get_system_instance()
-    if not system or not system.monitor_service:
+    system = await wait_for_system_instance(timeout=5)
+    if not system:
+        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다. 잠시 후 다시 시도해주세요.")
+    if not system.monitor_service:
         raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
     
     try:
@@ -137,8 +162,10 @@ async def pause_alerts():
 @router.post("/resume-alerts")
 async def resume_alerts():
     """알람 재개"""
-    system = get_system_instance()
-    if not system or not system.monitor_service:
+    system = await wait_for_system_instance(timeout=5)
+    if not system:
+        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다. 잠시 후 다시 시도해주세요.")
+    if not system.monitor_service:
         raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
     
     try:
