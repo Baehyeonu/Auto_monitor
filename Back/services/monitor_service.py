@@ -486,7 +486,7 @@ class MonitorService:
             pass
     
     async def _broadcast_dashboard_periodically(self):
-        """5초마다 대시보드 현황 브로드캐스트"""
+        """1초마다 대시보드 현황 브로드캐스트 (상태 변경 시 즉시 업데이트되므로 백업용)"""
         while self.is_running:
             try:
                 if self.is_monitoring_active():
@@ -495,5 +495,5 @@ class MonitorService:
             except Exception:
                 pass
             
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
 

@@ -119,6 +119,8 @@ class SlackListener:
                 is_cam_on=is_cam_on,
                 elapsed_minutes=0
             )
+            if self.monitor_service:
+                await self.monitor_service.broadcast_dashboard_update_now()
         except Exception:
             pass
     

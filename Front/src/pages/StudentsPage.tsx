@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Trash2 } from 'lucide-react'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import type { WebSocketMessage } from '@/types/websocket'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
@@ -45,6 +47,39 @@ export default function StudentsPage() {
   useEffect(() => {
     loadStudents()
   }, [loadStudents])
+
+  const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
+    if (message.type === 'STUDENT_STATUS_CHANGED') {
+      const payload = message.payload as {
+        student_id: number
+        zep_name: string
+        event_type: string
+        is_cam_on: boolean
+      }
+      
+      const updateStudentStatus = (studentList: Student[]) => {
+        return studentList.map((student) => {
+          if (student.id === payload.student_id) {
+            return {
+              ...student,
+              is_cam_on: payload.is_cam_on,
+              last_status_change: new Date().toISOString(),
+              last_leave_time: payload.event_type === 'user_leave' ? new Date().toISOString() : student.last_leave_time,
+              is_absent: payload.event_type === 'user_leave' ? false : student.is_absent,
+            }
+          }
+          return student
+        })
+      }
+      
+      setStudents((prev) => updateStudentStatus(prev))
+      setAdmins((prev) => updateStudentStatus(prev))
+    }
+  }, [])
+
+  useWebSocket({
+    onMessage: handleWebSocketMessage,
+  })
 
   const handleSubmit = async (values: {
     zep_name: string
