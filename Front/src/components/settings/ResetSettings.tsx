@@ -13,7 +13,15 @@ export function ResetSettings({ settings }: Props) {
   const [isResetting, setIsResetting] = useState(false)
   const [isPausing, setIsPausing] = useState(false)
   const [isResuming, setIsResuming] = useState(false)
+  const [isSavingTime, setIsSavingTime] = useState(false)
+  const [resetTime, setResetTime] = useState(settings.daily_reset_time || '')
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const refreshPage = () => {
+    setTimeout(() => {
+      window.location.reload()
+    }, 1000)
+  }
 
   const handleReset = async () => {
     if (!confirm('모든 학생의 상태를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
@@ -37,10 +45,7 @@ export function ResetSettings({ settings }: Props) {
       }
 
       setMessage({ type: 'success', text: '초기화가 완료되었습니다.' })
-      // 페이지 새로고침하여 최신 상태 반영
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      refreshPage()
     } catch (error) {
       setMessage({
         type: 'error',
@@ -69,9 +74,7 @@ export function ResetSettings({ settings }: Props) {
       }
 
       setMessage({ type: 'success', text: '알람이 중지되었습니다.' })
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      refreshPage()
     } catch (error) {
       setMessage({
         type: 'error',
@@ -100,9 +103,7 @@ export function ResetSettings({ settings }: Props) {
       }
 
       setMessage({ type: 'success', text: '알람이 시작되었습니다.' })
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
+      refreshPage()
     } catch (error) {
       setMessage({
         type: 'error',
@@ -110,6 +111,43 @@ export function ResetSettings({ settings }: Props) {
       })
     } finally {
       setIsResuming(false)
+    }
+  }
+
+  const handleSaveResetTime = async () => {
+    if (!resetTime) {
+      setMessage({ type: 'error', text: '초기화 시간을 선택해 주세요.' })
+      return
+    }
+
+    setIsSavingTime(true)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/v1/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          daily_reset_time: resetTime || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || '초기화 시간 저장 실패')
+      }
+
+      setMessage({ type: 'success', text: '초기화 시간이 저장되었습니다.' })
+      refreshPage()
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : '초기화 시간 저장 중 오류가 발생했습니다.',
+      })
+    } finally {
+      setIsSavingTime(false)
     }
   }
 
@@ -136,13 +174,20 @@ export function ResetSettings({ settings }: Props) {
             <label className="text-sm font-medium">일일 초기화 시간</label>
             <Input
               type="time"
-              value={settings.daily_reset_time || ''}
-              disabled
-              className="bg-muted"
+              value={resetTime}
+              onChange={(e) => setResetTime(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              초기화 시간은 스케줄 설정에서 변경할 수 있습니다.
+              매일 지정된 시간에 모든 학생의 상태와 알림 기록을 초기화합니다.
             </p>
+            <Button
+              variant="outline"
+              onClick={handleSaveResetTime}
+              disabled={isSavingTime}
+              className="w-full"
+            >
+              {isSavingTime ? '저장 중...' : '초기화 시간 저장'}
+            </Button>
           </div>
 
           <div className="flex flex-col gap-2">
