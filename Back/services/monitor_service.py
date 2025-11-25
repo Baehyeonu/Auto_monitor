@@ -206,6 +206,7 @@ class MonitorService:
         
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
         
+        candidate_students = []
         for student in students:
             if not student.discord_id:
                 print(f"   ⚠️ {student.zep_name}: Discord 미등록 (등록 필요)")
@@ -223,13 +224,17 @@ class MonitorService:
             if student.is_absent:
                 continue
             
-            should_alert = await self.db_service.should_send_alert(
-                student.id,
-                self.alert_cooldown
-            )
-            
-            if not should_alert:
-                continue
+            candidate_students.append(student)
+        
+        if not candidate_students:
+            return
+        
+        student_ids = [s.id for s in candidate_students]
+        alert_status = await self.db_service.should_send_alert_batch(student_ids, self.alert_cooldown)
+        
+        students_to_alert = [s for s in candidate_students if alert_status.get(s.id, False)]
+        
+        for student in students_to_alert:
             
             if self.is_dm_paused:
                 continue
@@ -241,8 +246,6 @@ class MonitorService:
                 success = await self.discord_bot.send_camera_alert(student)
                 
                 if success:
-                    await self.db_service.record_alert_sent(student.id)
-                    
                     await manager.broadcast_new_alert(
                         alert_id=0,
                         student_id=student.id,
@@ -252,7 +255,6 @@ class MonitorService:
                     )
             else:
                 await self.discord_bot.send_camera_alert_to_admin(student)
-                await self.db_service.record_alert_sent(student.id)
                 
                 await manager.broadcast_new_alert(
                     alert_id=0,
@@ -261,6 +263,10 @@ class MonitorService:
                     alert_type='camera_off_admin',
                     alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (관리자 알림)'
                 )
+        
+        if students_to_alert:
+            alerted_ids = [s.id for s in students_to_alert]
+            await self.db_service.record_alerts_sent_batch(alerted_ids)
         
     async def _check_left_students(self):
         """접속 종료 후 복귀하지 않은 학생들 체크"""
@@ -273,6 +279,9 @@ class MonitorService:
         
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
         
+        non_absent_candidates = []
+        absent_candidates = []
+        
         for student in students:
             if student.discord_id and self.discord_bot.is_admin(student.discord_id):
                 continue
@@ -284,51 +293,61 @@ class MonitorService:
                 continue
             
             if not student.is_absent:
-                should_alert = await self.db_service.should_send_leave_admin_alert(
-                    student.id,
-                    self.leave_admin_alert_cooldown
-                )
+                non_absent_candidates.append(student)
+            else:
+                if student.discord_id:
+                    absent_candidates.append(student)
+        
+        if non_absent_candidates:
+            student_ids = [s.id for s in non_absent_candidates]
+            alert_status = await self.db_service.should_send_leave_admin_alert_batch(student_ids, self.leave_admin_alert_cooldown)
+            
+            students_to_alert = [s for s in non_absent_candidates if alert_status.get(s.id, False)]
+            alerted_ids = []
+            
+            for student in students_to_alert:
+                await self.discord_bot.send_leave_alert_to_admin(student)
+                alerted_ids.append(student.id)
                 
-                if should_alert:
-                    await self.discord_bot.send_leave_alert_to_admin(student)
-                    await self.db_service.record_leave_admin_alert_sent(student.id)
+                last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
+                elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
+                
+                await manager.broadcast_new_alert(
+                    alert_id=0,
+                    student_id=student.id,
+                    zep_name=student.zep_name,
+                    alert_type='leave_alert',
+                    alert_message=f'{student.zep_name}님이 접속을 종료한 지 {elapsed_minutes}분이 지났습니다.'
+                )
+            
+            if alerted_ids:
+                await self.db_service.record_leave_admin_alerts_sent_batch(alerted_ids)
+        
+        for student in absent_candidates:
+            should_alert = await self.db_service.should_send_absent_alert(
+                student.id,
+                self.absent_alert_cooldown
+            )
+            
+            if should_alert:
+                success = await self.discord_bot.send_absent_alert(student)
+                
+                if success:
+                    await self.db_service.record_absent_alert_sent(student.id)
                     
                     last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
                     elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
+                    absent_type_text = "외출" if student.absent_type == "leave" else "조퇴"
                     
                     await manager.broadcast_new_alert(
                         alert_id=0,
                         student_id=student.id,
                         zep_name=student.zep_name,
-                        alert_type='leave_alert',
-                        alert_message=f'{student.zep_name}님이 접속을 종료한 지 {elapsed_minutes}분이 지났습니다.'
+                        alert_type='absent_alert',
+                        alert_message=f'{student.zep_name}님 {absent_type_text} 확인 - 접속 종료 후 {elapsed_minutes}분 경과'
                     )
-            
-            if student.is_absent:
-                should_alert = await self.db_service.should_send_absent_alert(
-                    student.id,
-                    self.absent_alert_cooldown
-                )
-                
-                if should_alert and student.discord_id:
-                    success = await self.discord_bot.send_absent_alert(student)
-                    
-                    if success:
-                        await self.db_service.record_absent_alert_sent(student.id)
-                        
-                        last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
-                        elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
-                        absent_type_text = "외출" if student.absent_type == "leave" else "조퇴"
-                        
-                        await manager.broadcast_new_alert(
-                            alert_id=0,
-                            student_id=student.id,
-                            zep_name=student.zep_name,
-                            alert_type='absent_alert',
-                            alert_message=f'{student.zep_name}님 {absent_type_text} 확인 - 접속 종료 후 {elapsed_minutes}분 경과'
-                        )
-                    else:
-                        print(f"   ❌ 외출/조퇴 알림 전송 실패: {student.zep_name}")
+                else:
+                    print(f"   ❌ 외출/조퇴 알림 전송 실패: {student.zep_name}")
     
     async def _check_return_requests(self):
         """복귀 요청 후 접속하지 않은 학생들 체크"""

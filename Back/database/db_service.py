@@ -195,6 +195,44 @@ class DBService:
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
     @staticmethod
+    async def should_send_alert_batch(student_ids: List[int], cooldown_minutes: int) -> dict[int, bool]:
+        """
+        여러 학생의 알림 전송 가능 여부를 배치로 확인
+        
+        Args:
+            student_ids: 학생 ID 리스트
+            cooldown_minutes: 쿨다운 시간 (분)
+            
+        Returns:
+            {student_id: bool} 딕셔너리
+        """
+        if not student_ids:
+            return {}
+        
+        async with AsyncSessionLocal() as session:
+            threshold_time = to_naive(utcnow() - timedelta(minutes=cooldown_minutes))
+            
+            result = await session.execute(
+                select(Student.id, Student.last_alert_sent)
+                .where(Student.id.in_(student_ids))
+            )
+            students = result.all()
+            
+            alert_status = {}
+            for student_id in student_ids:
+                alert_status[student_id] = False
+            
+            for student_id, last_alert_sent in students:
+                if last_alert_sent is None:
+                    alert_status[student_id] = True
+                else:
+                    last_alert_utc = last_alert_sent if last_alert_sent.tzinfo else last_alert_sent.replace(tzinfo=timezone.utc)
+                    elapsed = utcnow() - last_alert_utc
+                    alert_status[student_id] = elapsed.total_seconds() / 60 >= cooldown_minutes
+            
+            return alert_status
+    
+    @staticmethod
     async def record_alert_sent(student_id: int):
         """
         알림 전송 기록
@@ -210,6 +248,30 @@ class DBService:
                     last_alert_sent=to_naive(utcnow()),
                     alert_count=Student.alert_count + 1,
                     updated_at=to_naive(utcnow())
+                )
+            )
+            await session.commit()
+    
+    @staticmethod
+    async def record_alerts_sent_batch(student_ids: List[int]):
+        """
+        여러 학생의 알림 전송을 배치로 기록
+        
+        Args:
+            student_ids: 학생 ID 리스트
+        """
+        if not student_ids:
+            return
+        
+        async with AsyncSessionLocal() as session:
+            now = to_naive(utcnow())
+            await session.execute(
+                update(Student)
+                .where(Student.id.in_(student_ids))
+                .values(
+                    last_alert_sent=now,
+                    alert_count=Student.alert_count + 1,
+                    updated_at=now
                 )
             )
             await session.commit()
@@ -659,6 +721,47 @@ class DBService:
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
     @staticmethod
+    async def should_send_leave_admin_alert_batch(student_ids: List[int], cooldown_minutes: int) -> dict[int, bool]:
+        """
+        여러 학생의 관리자 접속 종료 알림 전송 가능 여부를 배치로 확인
+        
+        Args:
+            student_ids: 학생 ID 리스트
+            cooldown_minutes: 쿨다운 시간 (분)
+            
+        Returns:
+            {student_id: bool} 딕셔너리
+        """
+        if not student_ids:
+            return {}
+        
+        async with AsyncSessionLocal() as session:
+            threshold_time = to_naive(utcnow() - timedelta(minutes=cooldown_minutes))
+            
+            result = await session.execute(
+                select(Student.id, Student.is_absent, Student.last_leave_admin_alert)
+                .where(Student.id.in_(student_ids))
+            )
+            students = result.all()
+            
+            alert_status = {}
+            for student_id in student_ids:
+                alert_status[student_id] = False
+            
+            for student_id, is_absent, last_leave_admin_alert in students:
+                if is_absent:
+                    continue
+                
+                if last_leave_admin_alert is None:
+                    alert_status[student_id] = True
+                else:
+                    last_alert_utc = last_leave_admin_alert if last_leave_admin_alert.tzinfo else last_leave_admin_alert.replace(tzinfo=timezone.utc)
+                    elapsed = utcnow() - last_alert_utc
+                    alert_status[student_id] = elapsed.total_seconds() / 60 >= cooldown_minutes
+            
+            return alert_status
+    
+    @staticmethod
     async def record_leave_admin_alert_sent(student_id: int):
         """
         관리자 접속 종료 알림 전송 기록
@@ -673,6 +776,29 @@ class DBService:
                 .values(
                     last_leave_admin_alert=to_naive(utcnow()),
                     updated_at=to_naive(utcnow())
+                )
+            )
+            await session.commit()
+    
+    @staticmethod
+    async def record_leave_admin_alerts_sent_batch(student_ids: List[int]):
+        """
+        여러 학생의 관리자 접속 종료 알림 전송을 배치로 기록
+        
+        Args:
+            student_ids: 학생 ID 리스트
+        """
+        if not student_ids:
+            return
+        
+        async with AsyncSessionLocal() as session:
+            now = to_naive(utcnow())
+            await session.execute(
+                update(Student)
+                .where(Student.id.in_(student_ids))
+                .values(
+                    last_leave_admin_alert=now,
+                    updated_at=now
                 )
             )
             await session.commit()
@@ -741,7 +867,30 @@ class DBService:
                 )
             )
             await session.commit()
-
+    
+    @staticmethod
+    async def record_leave_admin_alerts_sent_batch(student_ids: List[int]):
+        """
+        여러 학생의 관리자 접속 종료 알림 전송을 배치로 기록
+        
+        Args:
+            student_ids: 학생 ID 리스트
+        """
+        if not student_ids:
+            return
+        
+        async with AsyncSessionLocal() as session:
+            now = to_naive(utcnow())
+            await session.execute(
+                update(Student)
+                .where(Student.id.in_(student_ids))
+                .values(
+                    last_leave_admin_alert=now,
+                    updated_at=now
+                )
+            )
+            await session.commit()
+    
     @staticmethod
     async def get_admin_students() -> List[Student]:
         """관리자 권한을 가진 학생 목록"""
