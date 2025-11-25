@@ -175,3 +175,22 @@ async def resume_alerts():
         raise HTTPException(status_code=500, detail=f"알람 시작 실패: {str(e)}")
 
 
+@router.post("/sync")
+async def sync_from_slack():
+    """슬랙 히스토리에서 최신 상태로 동기화"""
+    system = await wait_for_system_instance(timeout=5)
+    
+    if not system:
+        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다. 잠시 후 다시 시도해주세요.")
+    
+    if not system.slack_listener:
+        raise HTTPException(status_code=503, detail="Slack 리스너가 실행 중이 아닙니다.")
+    
+    try:
+        await system.slack_listener.restore_state_from_history(lookback_hours=24)
+        await system.monitor_service.broadcast_dashboard_update_now()
+        return {"success": True, "message": "슬랙에서 최신 상태로 동기화가 완료되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"동기화 실패: {str(e)}")
+
+

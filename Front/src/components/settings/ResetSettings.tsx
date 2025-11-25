@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Play, Pause, RotateCcw, MoreVertical, Check, X } from 'lucide-react'
+import { Play, Pause, RotateCcw, MoreVertical, Check, X, RefreshCw } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,7 @@ export function ResetSettings({ settings }: Props) {
   const [isResetting, setIsResetting] = useState(false)
   const [isPausing, setIsPausing] = useState(false)
   const [isResuming, setIsResuming] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [isEditingTime, setIsEditingTime] = useState(false)
   const [isSavingTime, setIsSavingTime] = useState(false)
   const [resetTime, setResetTime] = useState(settings.daily_reset_time || '')
@@ -166,6 +167,39 @@ export function ResetSettings({ settings }: Props) {
     }
   }
 
+  const handleSync = async () => {
+    if (!confirm('슬랙에서 최신 상태를 조회하여 동기화하시겠습니까?\n이 작업은 몇 초 정도 소요될 수 있습니다.')) {
+      return
+    }
+
+    setIsSyncing(true)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/v1/settings/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || '동기화 실패')
+      }
+
+      setMessage({ type: 'success', text: '슬랙에서 최신 상태로 동기화가 완료되었습니다.' })
+      refreshPage()
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : '동기화 중 오류가 발생했습니다.',
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -246,7 +280,7 @@ export function ResetSettings({ settings }: Props) {
           <div className="flex flex-col gap-2">
             <Button
               onClick={handleReset}
-              disabled={isResetting}
+              disabled={isResetting || isSyncing}
               variant="destructive"
               className="w-full"
             >
@@ -255,6 +289,21 @@ export function ResetSettings({ settings }: Props) {
             </Button>
             <p className="text-xs text-muted-foreground">
               모든 학생의 카메라 상태 및 알림 기록을 초기화합니다.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={handleSync}
+              disabled={isSyncing || isResetting}
+              variant="outline"
+              className="w-full"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? '동기화 중...' : '슬랙 상태 동기화'}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              초기화 후 상태가 잘못되었거나 서버 다운으로 상태가 맞지 않을 때, 슬랙에서 최신 상태를 조회하여 동기화합니다.
             </p>
           </div>
 
