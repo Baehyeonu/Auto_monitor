@@ -106,7 +106,7 @@ export default function StudentsPage() {
   const managementTabs = useMemo(
     () => [
       { value: 'create', label: '학생 등록', content: <StudentForm onSubmit={handleSubmit} isSubmitting={isSubmitting} /> },
-      { value: 'bulk', label: '일괄 등록', content: <BulkImport /> },
+      { value: 'bulk', label: '일괄 등록', content: <BulkImport onUpdated={loadStudents} /> },
       {
         value: 'delete',
         label: '학생 삭제',

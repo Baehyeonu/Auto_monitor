@@ -49,3 +49,15 @@ export async function updateAdminStatus(id: number, isAdmin: boolean) {
   )
 }
 
+export async function bulkCreateStudents(
+  students: Array<{ zep_name: string; discord_id?: number }>
+) {
+  return apiRequest<{ created: number; failed: number; errors: string[] }>(
+    `${API_ROUTES.students}/bulk`,
+    {
+      method: 'POST',
+      body: JSON.stringify(students),
+    },
+  )
+}
+
