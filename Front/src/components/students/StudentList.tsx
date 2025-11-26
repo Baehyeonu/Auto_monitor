@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import type { Student } from '@/types/student'
 import { formatKoreanTime } from '@/lib/utils'
 import { SendDMModal } from './SendDMModal'
+import { StudentActionModal } from './StudentActionModal'
+import { StudentLogModal } from './StudentLogModal'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Search } from 'lucide-react'
 
@@ -61,7 +63,9 @@ function getStatusBadge(student: Student) {
 export function StudentList({ students, isLoading, onRefresh, pagination, onSearch, allStudents = [], onSelectStudent }: Props) {
   const totalPages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.limit)) : 1
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false)
   const [isDMModalOpen, setIsDMModalOpen] = useState(false)
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -149,7 +153,15 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
 
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student)
+    setIsActionModalOpen(true)
+  }
+
+  const handleSelectDM = () => {
     setIsDMModalOpen(true)
+  }
+
+  const handleSelectLog = () => {
+    setIsLogModalOpen(true)
   }
 
   return (
@@ -275,11 +287,27 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
         )}
       </CardContent>
     </Card>
-    <SendDMModal
-      open={isDMModalOpen}
-      onOpenChange={setIsDMModalOpen}
-      student={selectedStudent}
-    />
+      <StudentActionModal
+        open={isActionModalOpen}
+        onOpenChange={setIsActionModalOpen}
+        student={selectedStudent}
+        onSelectDM={handleSelectDM}
+        onSelectLog={handleSelectLog}
+      />
+      <SendDMModal
+        open={isDMModalOpen}
+        onOpenChange={setIsDMModalOpen}
+        student={selectedStudent}
+      />
+      <StudentLogModal
+        open={isLogModalOpen}
+        onOpenChange={setIsLogModalOpen}
+        student={selectedStudent}
+        onBack={() => {
+          setIsLogModalOpen(false)
+          setIsActionModalOpen(true)
+        }}
+      />
     </>
   )
 }
