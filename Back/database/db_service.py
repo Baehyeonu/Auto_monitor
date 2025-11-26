@@ -405,7 +405,7 @@ class DBService:
         이전 실행의 데이터로 인한 오알림 방지
         (학생 등록 정보는 유지)
         
-        초기화 후 모든 학생은 "퇴장" 상태로 표시됩니다.
+        카메라 상태와 실제 이벤트 시간은 유지하고, 알림/응답/외출 관련 필드만 리셋합니다.
         
         Returns:
             초기화 시간 (datetime)
@@ -415,18 +415,18 @@ class DBService:
             await session.execute(
                 update(Student)
                 .values(
-                    is_cam_on=False,
-                    last_status_change=now,
+                    # 알림 관련 필드만 리셋
                     last_alert_sent=None,
+                    alert_count=0,
                     response_status=None,
                     response_time=None,
                     is_absent=False,
                     absent_type=None,
-                    last_leave_time=to_naive(now),
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
                     updated_at=to_naive(now)
+                    # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                 )
             )
             await session.commit()
@@ -473,18 +473,18 @@ class DBService:
                     update(Student)
                     .where(Student.id.in_(student_ids_to_reset))
                     .values(
-                        is_cam_on=False,
-                        last_status_change=reset_time_utc,
+                        # 알림 관련 필드만 리셋
                         last_alert_sent=None,
+                        alert_count=0,
                         response_status=None,
                         response_time=None,
                         is_absent=False,
                         absent_type=None,
-                        last_leave_time=None,
                         last_absent_alert=None,
                         last_leave_admin_alert=None,
                         last_return_request_time=None,
                         updated_at=to_naive(now)
+                        # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                     )
                 )
                 await session.commit()

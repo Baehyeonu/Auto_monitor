@@ -182,7 +182,7 @@ class SlackListener:
         except Exception:
             pass
     
-    async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
+    async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0, add_to_joined_today: bool = True):
         try:
             student_id = None
             matched_name = zep_name
@@ -222,7 +222,8 @@ class SlackListener:
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
                 return
             
-            self.joined_students_today.add(student_id)
+            if add_to_joined_today:
+                self.joined_students_today.add(student_id)
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
@@ -239,7 +240,7 @@ class SlackListener:
         except Exception:
             pass
     
-    async def _handle_camera_off(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
+    async def _handle_camera_off(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0, add_to_joined_today: bool = True):
         try:
             student_id = None
             matched_name = zep_name
@@ -279,7 +280,8 @@ class SlackListener:
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
                 return
             
-            self.joined_students_today.add(student_id)
+            if add_to_joined_today:
+                self.joined_students_today.add(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if not success:
@@ -479,7 +481,9 @@ class SlackListener:
                 if match_on:
                     zep_name_raw = match_on.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
+                    # 오늘 초기화 시간 이후의 이벤트만 joined_today에 추가
+                    add_to_joined = message_ts >= today_reset_ts
+                    await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_on_count += 1
                     processed_count += 1
                     continue
@@ -488,7 +492,9 @@ class SlackListener:
                 if match_off:
                     zep_name_raw = match_off.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
+                    # 오늘 초기화 시간 이후의 이벤트만 joined_today에 추가
+                    add_to_joined = message_ts >= today_reset_ts
+                    await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_off_count += 1
                     processed_count += 1
                     continue
@@ -517,13 +523,19 @@ class SlackListener:
             
             await self.db_service.reset_all_alert_fields()
             
-            # 동기화 후 현재 카메라 상태가 있는 학생들을 joined_today에 추가
-            # (동기화 시 오늘 초기화 시간 이전 이벤트는 joined_today에 추가되지 않을 수 있음)
+            # 동기화 후 현재 카메라 상태가 있고, 오늘 날짜에 상태 변경이 있는 학생만 joined_today에 추가
             all_students = await self.db_service.get_all_students()
+            today_date = now.date()
+            
             for student in all_students:
-                # 카메라 상태가 있고, 접속 종료 상태가 아니면 오늘 접속한 것으로 간주
+                # 카메라 상태가 있고, 접속 종료 상태가 아니고, 오늘 날짜에 상태 변경이 있으면 오늘 접속한 것으로 간주
                 if student.last_status_change and not student.last_leave_time:
-                    self.joined_students_today.add(student.id)
+                    last_change = student.last_status_change
+                    if last_change.tzinfo is None:
+                        last_change = last_change.replace(tzinfo=timezone.utc)
+                    # 오늘 날짜의 상태 변경만 joined_today에 추가
+                    if last_change.date() == today_date:
+                        self.joined_students_today.add(student.id)
             
             if self.monitor_service:
                 await asyncio.sleep(0.5)

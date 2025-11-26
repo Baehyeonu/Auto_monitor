@@ -121,41 +121,39 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
             총 {students.length}명의 학생이 있습니다.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {isLoading ? (
-            <div className="flex-1 flex items-center justify-center py-12">
-              <p className="text-sm text-muted-foreground">데이터를 불러오는 중입니다...</p>
-            </div>
-          ) : students.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center py-12">
-              <p className="text-sm text-muted-foreground">해당 상태의 학생이 없습니다.</p>
-            </div>
-          ) : (
-            <ScrollArea className="flex-1 pr-4">
-              <div className="space-y-3">
-                {students.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3"
-                  >
-                    <div className="flex-1">
-                      <p className="font-semibold text-foreground">{student.zep_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        마지막 상태 변경:{' '}
-                        {student.last_status_change
-                          ? formatKoreanTime(student.last_status_change)
-                          : '정보 없음'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(student)}
-                    </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-sm text-muted-foreground">데이터를 불러오는 중입니다...</p>
+          </div>
+        ) : students.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-sm text-muted-foreground">해당 상태의 학생이 없습니다.</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[60vh] pr-4">
+            <div className="space-y-3">
+              {students.map((student) => (
+                <div
+                  key={student.id}
+                  className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3"
+                >
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground">{student.zep_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      마지막 상태 변경:{' '}
+                      {student.last_status_change
+                        ? formatKoreanTime(student.last_status_change)
+                        : '정보 없음'}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-        </div>
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(student)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
       </DialogContent>
     </Dialog>
   )
