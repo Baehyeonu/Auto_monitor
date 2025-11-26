@@ -18,6 +18,11 @@ interface Props {
 }
 
 function getStatusBadge(student: Student) {
+  // 관리자는 "관리자"로 표시
+  if (student.is_admin) {
+    return <Badge variant="outline" className="border-yellow-500 text-yellow-600">관리자</Badge>
+  }
+  
   // 접속 종료 상태
   if (student.last_leave_time) {
     return <Badge variant="destructive">접속 종료</Badge>

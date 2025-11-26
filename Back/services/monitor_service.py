@@ -55,6 +55,17 @@ class MonitorService:
         
         await self._check_startup_reset()
         
+        await self._start_monitoring_loop()
+    
+    async def start_without_reset(self):
+        """모니터링 시작 (초기화 제외) - 이미 초기화가 완료된 경우 사용"""
+        self.is_running = True
+        self.start_time = datetime.now(timezone.utc)
+        
+        await self._start_monitoring_loop()
+    
+    async def _start_monitoring_loop(self):
+        """모니터링 루프 시작 (공통 로직)"""
         print(f"👀 모니터링 서비스 시작 (체크 간격: {self.check_interval}초)")
         print(f"   • 카메라 OFF 임계값: {self.camera_off_threshold}분")
         print(f"   • 알림 쿨다운: {self.alert_cooldown}분")

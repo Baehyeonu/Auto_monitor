@@ -101,7 +101,8 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
             result.append(status_data)
         elif filter == "camera_on" and student.is_cam_on and not student.last_leave_time:
             result.append(status_data)
-        elif filter == "camera_off" and not student.is_cam_on and not student.last_leave_time:
+        elif filter == "camera_off" and not student.is_cam_on and not student.last_leave_time and student.id in joined_today:
+            # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
             result.append(status_data)
         elif filter == "left" and student.last_leave_time:
             result.append(status_data)

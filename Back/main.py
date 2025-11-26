@@ -133,13 +133,25 @@ class ZepMonitoringSystem:
             
             await self._print_admin_info()
             
-            slack_task = asyncio.create_task(self.slack_listener.start())
+            # ⭐ 일일 초기화를 먼저 실행 (Slack 동기화 전에)
+            # 초기화 후 Slack 동기화를 통해 최신 상태를 반영
+            print("\n🔧 프로그램 시작 시 초기화 확인 중...")
+            await self.monitor_service._check_startup_reset()
+            
+            # ⭐ Slack 동기화 완료 (await로 대기)
+            print("\n📡 Slack 히스토리 동기화 시작...")
+            await self.slack_listener.restore_state_from_history(lookback_hours=24)
+            print("✅ Slack 동기화 완료\n")
+            
+            # ⭐ 이제 Slack 리스너 시작 (실시간 리스닝만)
+            slack_task = asyncio.create_task(self.slack_listener.start_listener())
             self.tasks.append(slack_task)
             
-            await asyncio.sleep(2)
-            print("✅ Slack 연결 완료 (Socket Mode)")
+            await asyncio.sleep(1)
+            print("✅ Slack 실시간 리스닝 시작됨")
             
-            monitor_task = asyncio.create_task(self.monitor_service.start())
+            # ⭐ Monitor Service 시작 (_check_startup_reset은 이미 실행했으므로 제외)
+            monitor_task = asyncio.create_task(self.monitor_service.start_without_reset())
             self.tasks.append(monitor_task)
             
             if self.screen_monitor:

@@ -49,7 +49,8 @@ async def get_students(
         if status == "camera_on":
             filtered_students = [s for s in filtered_students if s.is_cam_on and not s.last_leave_time]
         elif status == "camera_off":
-            filtered_students = [s for s in filtered_students if not s.is_cam_on and not s.last_leave_time]
+            # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
+            filtered_students = [s for s in filtered_students if not s.is_cam_on and not s.last_leave_time and s.id in joined_today]
         elif status == "left":
             filtered_students = [s for s in filtered_students if s.last_leave_time is not None]
         elif status == "not_joined":
@@ -80,7 +81,7 @@ async def get_students(
             "last_leave_time": student.last_leave_time,
             "created_at": student.created_at,
             "updated_at": student.updated_at,
-            "not_joined": student.id not in joined_today and student.last_leave_time is None
+            "not_joined": student.id not in joined_today and student.last_leave_time is None and not student.is_admin
         }
         result_data.append(student_dict)
     

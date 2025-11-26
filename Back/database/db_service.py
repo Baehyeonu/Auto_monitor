@@ -51,7 +51,7 @@ class DBService:
     @staticmethod
     async def get_student_by_zep_name(zep_name: str) -> Optional[Student]:
         """
-        ZEP 이름으로 학생 조회
+        ZEP 이름으로 학생 조회 (정확 일치 우선, 부분 일치 지원)
         
         Args:
             zep_name: ZEP 이름
@@ -60,10 +60,36 @@ class DBService:
             Student 객체 또는 None
         """
         async with AsyncSessionLocal() as session:
+            # 1. 정확 일치 시도
             result = await session.execute(
                 select(Student).where(Student.zep_name == zep_name)
             )
-            return result.scalar_one_or_none()
+            student = result.scalar_one_or_none()
+            if student:
+                return student
+            
+            # 2. 부분 일치 시도 (한글 이름 부분이 포함된 경우)
+            # 예: "IH_02_김영철" -> "김영철" 추출 -> "김영철/IH02"와 매칭
+            import re
+            # 한글 이름 부분 추출
+            korean_parts = []
+            parts = re.split(r'[/_\-|\s]+', zep_name.strip())
+            for part in parts:
+                if any('\uAC00' <= char <= '\uD7A3' for char in part):
+                    korean_parts.append(part.strip())
+            
+            if korean_parts:
+                # 한글 이름이 포함된 학생 찾기
+                for korean_name in korean_parts:
+                    # LIKE 검색으로 부분 일치 시도
+                    result = await session.execute(
+                        select(Student).where(Student.zep_name.like(f'%{korean_name}%'))
+                    )
+                    student = result.scalar_one_or_none()
+                    if student:
+                        return student
+            
+            return None
     
     @staticmethod
     async def get_student_by_discord_id(discord_id: int) -> Optional[Student]:
