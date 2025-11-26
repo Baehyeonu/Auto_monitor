@@ -3,6 +3,7 @@
 """
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from database import DBService
 from api.schemas.student import (
@@ -14,6 +15,10 @@ from api.schemas.student import (
 from api.schemas.response import PaginatedResponse
 from services.admin_manager import admin_manager
 from api.routes.settings import wait_for_system_instance
+
+
+class SendDMRequest(BaseModel):
+    dm_type: str
 
 
 router = APIRouter()
@@ -243,5 +248,52 @@ async def update_admin_status(student_id: int, data: AdminStatusUpdate):
 
     await admin_manager.refresh()
     return await db_service.get_student_by_id(student_id)
+
+
+@router.post("/{student_id}/send-dm")
+async def send_dm_to_student(student_id: int, request: SendDMRequest):
+    """학생에게 직접 DM 전송"""
+    from api.routes.settings import wait_for_system_instance
+    from api.websocket_manager import manager
+    
+    if request.dm_type not in ["camera_alert", "join_request", "face_not_visible"]:
+        raise HTTPException(status_code=400, detail="Invalid dm_type")
+    
+    student = await db_service.get_student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    if not student.discord_id:
+        raise HTTPException(status_code=400, detail="Student does not have Discord ID")
+    
+    system = await wait_for_system_instance(timeout=2)
+    if not system or not system.discord_bot:
+        raise HTTPException(status_code=503, detail="Discord bot not available")
+    
+    success = False
+    message = ""
+    
+    if request.dm_type == "camera_alert":
+        success = await system.discord_bot.send_manual_camera_alert(student)
+        message = f"DM 전송: {student.zep_name}님에게 카메라 켜주세요 알림"
+    elif request.dm_type == "join_request":
+        success = await system.discord_bot.send_manual_join_request(student)
+        message = f"DM 전송: {student.zep_name}님에게 접속해 주세요 알림"
+    elif request.dm_type == "face_not_visible":
+        success = await system.discord_bot.send_face_not_visible_alert(student)
+        message = f"DM 전송: {student.zep_name}님에게 화면에 얼굴이 안보여요 알림"
+    
+    if success:
+        await manager.broadcast_system_log(
+            level="info",
+            source="discord",
+            event_type="dm_sent",
+            message=message,
+            student_name=student.zep_name,
+            student_id=student.id
+        )
+        return {"success": True, "message": "DM sent successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send DM")
 
 

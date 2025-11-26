@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Student } from '@/types/student'
 import { formatKoreanTime } from '@/lib/utils'
+import { SendDMModal } from './SendDMModal'
+import { useState } from 'react'
 
 interface Props {
   students: Student[]
@@ -53,9 +55,17 @@ function getStatusBadge(student: Student) {
 
 export function StudentList({ students, isLoading, onRefresh, pagination }: Props) {
   const totalPages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.limit)) : 1
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [isDMModalOpen, setIsDMModalOpen] = useState(false)
+
+  const handleStudentClick = (student: Student) => {
+    setSelectedStudent(student)
+    setIsDMModalOpen(true)
+  }
 
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>학생 목록</CardTitle>
         <Button variant="outline" size="sm" onClick={onRefresh}>
@@ -78,7 +88,8 @@ export function StudentList({ students, isLoading, onRefresh, pagination }: Prop
               {students.map((student) => (
                 <div
                   key={student.id}
-                  className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3"
+                  className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors"
+                  onClick={() => handleStudentClick(student)}
                 >
                   <div className="flex-1">
                     <p className="font-semibold text-foreground">{student.zep_name}</p>
@@ -124,6 +135,12 @@ export function StudentList({ students, isLoading, onRefresh, pagination }: Prop
         )}
       </CardContent>
     </Card>
+    <SendDMModal
+      open={isDMModalOpen}
+      onOpenChange={setIsDMModalOpen}
+      student={selectedStudent}
+    />
+    </>
   )
 }
 

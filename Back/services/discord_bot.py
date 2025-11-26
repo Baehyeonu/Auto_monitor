@@ -1126,6 +1126,84 @@ class DiscordBot(commands.Bot):
             return False
         except Exception as e:
             return False
+    
+    async def send_manual_camera_alert(self, student) -> bool:
+        """
+        수동으로 카메라 켜주세요 DM 전송 (기존 send_camera_alert 재사용)
+        
+        Args:
+            student: Student 객체
+            
+        Returns:
+            전송 성공 여부
+        """
+        return await self.send_camera_alert(student)
+    
+    async def send_manual_join_request(self, student) -> bool:
+        """
+        수동으로 접속해 주세요 DM 전송
+        
+        Args:
+            student: Student 객체
+            
+        Returns:
+            전송 성공 여부
+        """
+        try:
+            user = await self.fetch_user(student.discord_id)
+            
+            embed = discord.Embed(
+                title="⚠️ 접속 확인 요청",
+                description=f"{student.zep_name}님, ZEP에 접속해주세요.",
+                color=discord.Color.orange()
+            )
+            
+            embed.add_field(
+                name="💡 안내",
+                value="ZEP에 접속해주시기 바랍니다.",
+                inline=False
+            )
+            
+            await user.send(embed=embed)
+            return True
+            
+        except discord.Forbidden:
+            return False
+        except Exception as e:
+            return False
+    
+    async def send_face_not_visible_alert(self, student) -> bool:
+        """
+        화면에 얼굴이 안보여요 DM 전송
+        
+        Args:
+            student: Student 객체
+            
+        Returns:
+            전송 성공 여부
+        """
+        try:
+            user = await self.fetch_user(student.discord_id)
+            
+            embed = discord.Embed(
+                title="⚠️ 카메라 확인 요청",
+                description=f"{student.zep_name}님, 젭 화면에 얼굴이 보이지 않습니다.",
+                color=discord.Color.orange()
+            )
+            
+            embed.add_field(
+                name="💡 안내",
+                value="카메라 확인해 주시고 조정해 주세요!",
+                inline=False
+            )
+            
+            await user.send(embed=embed)
+            return True
+            
+        except discord.Forbidden:
+            return False
+        except Exception as e:
+            return False
 
 
 class AlertView(discord.ui.View):
