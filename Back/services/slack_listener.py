@@ -73,17 +73,7 @@ class SlackListener:
         return list(reversed(target_parts)) if target_parts else [zep_name.strip()]
     
     def _is_duplicate_event(self, student_id: int, event_type: str, message_ts: float) -> bool:
-        """
-        중복 이벤트 체크 (0.01초 이내 동일 이벤트만 무시 - 대폭 단축)
-        
-        Args:
-            student_id: 학생 ID
-            event_type: 이벤트 타입 ("camera_on", "camera_off", "user_join", "user_leave")
-            message_ts: 메시지 타임스탬프
-            
-        Returns:
-            중복이면 True, 아니면 False
-        """
+        """중복 이벤트 체크 (0.01초 이내 동일 이벤트만 무시)"""
         key = (student_id, event_type)
         last_time = self.last_event_times.get(key)
         
@@ -227,26 +217,17 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                if self.is_restoring:
-                    print(f"      ⚠️ [동기화] 학생을 찾을 수 없음: {zep_name_raw} → {zep_name}")
                 return
             
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
                 return
             
-            # 카메라 ON 이벤트는 접속을 의미하므로 joined_students_today에 추가
             self.joined_students_today.add(student_id)
-            
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if not success:
-                if self.is_restoring:
-                    print(f"      ⚠️ [동기화] 카메라 ON 업데이트 실패: {matched_name}")
                 return
-            
-            if self.is_restoring:
-                print(f"      ✅ [동기화] {matched_name} 카메라 ON")
             
             if not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
@@ -293,25 +274,16 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                if self.is_restoring:
-                    print(f"      ⚠️ [동기화] 학생을 찾을 수 없음: {zep_name_raw} → {zep_name}")
                 return
             
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
                 return
             
-            # 카메라 OFF 이벤트도 접속을 의미하므로 joined_students_today에 추가
             self.joined_students_today.add(student_id)
-            
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if not success:
-                if self.is_restoring:
-                    print(f"      ⚠️ [동기화] 카메라 OFF 업데이트 실패: {matched_name}")
                 return
-            
-            if self.is_restoring:
-                print(f"      ✅ [동기화] {matched_name} 카메라 OFF")
             
             if not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
@@ -358,8 +330,6 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                if self.is_restoring:
-                    print(f"      ⚠️ [동기화] 학생을 찾을 수 없음: {zep_name_raw} → {zep_name}")
                 return
             
             if self._is_duplicate_event(student_id, "user_join", message_ts):
@@ -368,11 +338,8 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             
-            if self.is_restoring and add_to_joined_today:
-                print(f"      ✅ [동기화] {matched_name} 입장")
-            
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
+            await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if success and not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
@@ -447,13 +414,6 @@ class SlackListener:
             # 학생 캐시 먼저 로드 (이름 매칭을 위해 필요)
             await self._refresh_student_cache()
             
-            # ⚠️ DB 초기화를 하지 않고, 최신 메시지만 순차적으로 처리
-            # reset_all_camera_status()를 호출하면 동기화 중에 DB 상태가 리셋되어
-            # 프론트엔드가 잘못된 상태를 보게 됨
-            # 대신 최신 메시지만 순차적으로 처리하여 최종 상태를 복원
-            # 기존 DB 상태는 유지되고, 메시지 처리로 최종 상태가 결정됨
-            
-            print("   💾 기존 DB 상태 유지 (초기화하지 않음)")
             
             now = datetime.now()
             today_reset_dt = None
@@ -499,13 +459,8 @@ class SlackListener:
                     break
             
             if not messages:
-                print("   ⚠️ 처리할 메시지가 없습니다.")
-                # 메시지가 없어도 오늘 초기화 시간 이후 접속한 학생은 상태 유지
-                # DB 초기화는 하지 않음
                 return
             
-            print(f"   📨 총 {len(messages)}개의 메시지 발견")
-            # 시간순으로 정렬 (오래된 것부터 최신 순서로)
             messages.sort(key=lambda msg: float(msg.get("ts", 0)))
             
             processed_count = 0
@@ -514,8 +469,6 @@ class SlackListener:
             join_count = 0
             leave_count = 0
             
-            # 최신 메시지만 순차적으로 처리하여 최종 상태 복원
-            # DB를 초기화하지 않으므로 기존 상태가 유지되고, 메시지 처리로 최종 상태가 결정됨
             for message in messages:
                 text = message.get("text", "")
                 message_ts = float(message.get("ts", 0))
@@ -560,40 +513,19 @@ class SlackListener:
                     processed_count += 1
                     continue
             
-            print(f"   📊 처리 완료: 카메라 ON {camera_on_count}건, OFF {camera_off_count}건, 입장 {join_count}건, 퇴장 {leave_count}건 (총 {processed_count}건)")
-            print(f"   👥 오늘 접속한 학생: {len(self.joined_students_today)}명")
             
             await self.db_service.reset_all_alert_fields()
             
-            # 동기화 완료 후 최종 상태 확인 및 브로드캐스트
-            # ⚠️ is_restoring을 False로 설정하기 전에 대시보드 업데이트를 먼저 수행
-            # 그래야 실시간 이벤트가 동기화 결과를 덮어쓰지 않음
             if self.monitor_service:
-                # DB 커밋이 완료되도록 잠시 대기 (비동기 작업 완료 보장)
                 await asyncio.sleep(0.5)
-                
-                # 최종 상태 확인 (DB에서 다시 조회하여 확실한 상태 확인)
-                all_students = await self.db_service.get_all_students()
-                camera_on_final = sum(1 for s in all_students if s.is_cam_on and not s.is_admin)
-                camera_off_final = sum(1 for s in all_students if not s.is_cam_on and not s.is_admin and s.id in self.joined_students_today and not s.last_leave_time)
-                left_final = sum(1 for s in all_students if s.last_leave_time and not s.is_admin)
-                not_joined_final = sum(1 for s in all_students if s.id not in self.joined_students_today and not s.last_leave_time and not s.is_admin)
-                
-                print(f"   📈 최종 상태: 카메라 ON {camera_on_final}명, OFF {camera_off_final}명, 퇴장 {left_final}명, 미접속 {not_joined_final}명")
-                
-                # 동기화 완료 후 대시보드 업데이트 (is_restoring이 True인 상태에서)
-                # 이 시점에 DB는 동기화된 최신 상태를 반영하고 있음
                 await self.monitor_service.broadcast_dashboard_update_now()
-                print("   ✅ 동기화 완료: 대시보드 현황 업데이트됨 (동기화된 최신 상태)")
             
         except Exception as e:
             print(f"   ⚠️ 동기화 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
         finally:
-            # 동기화 완료 후 실시간 이벤트 처리 재개
             self.is_restoring = False
-            print("   ▶️ 실시간 이벤트 처리 재개")
     
     def get_joined_students_today(self) -> set:
         return self.joined_students_today

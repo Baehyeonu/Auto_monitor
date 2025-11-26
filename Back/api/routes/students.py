@@ -20,6 +20,14 @@ router = APIRouter()
 db_service = DBService()
 
 
+async def _get_joined_today():
+    """오늘 접속한 학생 ID 집합 반환"""
+    system = await wait_for_system_instance(timeout=2)
+    if system and system.slack_listener:
+        return system.slack_listener.get_joined_students_today()
+    return set()
+
+
 @router.get("", response_model=PaginatedResponse[StudentResponse])
 async def get_students(
     page: int = Query(1, ge=1),
@@ -38,11 +46,7 @@ async def get_students(
     if is_admin_bool is not None:
         students = [s for s in students if s.is_admin == is_admin_bool]
     
-    joined_today = set()
-    system = await wait_for_system_instance(timeout=2)
-    if system and system.slack_listener:
-        joined_today = system.slack_listener.get_joined_students_today()
-    
+    joined_today = await _get_joined_today()
     filtered_students = students
     
     if status:

@@ -18,7 +18,6 @@ async def get_attendance_report(
     end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)")
 ):
     """출석 리포트"""
-    # TODO: 출석 데이터 수집 및 리포트 생성
     return {"message": "Not implemented yet"}
 
 
@@ -28,7 +27,6 @@ async def get_camera_status_report(
     end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)")
 ):
     """카메라 상태 리포트"""
-    # TODO: 카메라 상태 이력 리포트 생성
     return {"message": "Not implemented yet"}
 
 
@@ -38,7 +36,6 @@ async def get_alerts_report(
     end_date: Optional[str] = Query(None, description="종료 날짜 (YYYY-MM-DD)")
 ):
     """알림 리포트"""
-    # TODO: 알림 이력 리포트 생성
     return {"message": "Not implemented yet"}
 
 

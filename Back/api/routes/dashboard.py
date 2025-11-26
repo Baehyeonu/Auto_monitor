@@ -13,10 +13,19 @@ router = APIRouter()
 db_service = DBService()
 
 
+async def _get_joined_today():
+    """오늘 접속한 학생 ID 집합 반환"""
+    system = await wait_for_system_instance(timeout=2)
+    if system and system.slack_listener:
+        return system.slack_listener.get_joined_students_today()
+    return set()
+
+
 @router.get("/overview")
 async def get_overview():
     """전체 현황 조회"""
     students = await db_service.get_all_students()
+    joined_today = await _get_joined_today()
     
     camera_on = 0
     camera_off = 0
@@ -28,11 +37,6 @@ async def get_overview():
     threshold_minutes = config.CAMERA_OFF_THRESHOLD
     
     non_admin_students = [s for s in students if not s.is_admin]
-    
-    joined_today = set()
-    system = await wait_for_system_instance(timeout=2)
-    if system and system.slack_listener:
-        joined_today = system.slack_listener.get_joined_students_today()
     
     for student in non_admin_students:
         if student.last_leave_time:
@@ -66,11 +70,7 @@ async def get_overview():
 async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_on|camera_off|left|not_joined)$")):
     """실시간 학생 상태 목록"""
     students = await db_service.get_all_students()
-    
-    joined_today = set()
-    system = await wait_for_system_instance(timeout=2)
-    if system and system.slack_listener:
-        joined_today = system.slack_listener.get_joined_students_today()
+    joined_today = await _get_joined_today()
     
     now = datetime.now(timezone.utc)
     result = []
@@ -115,7 +115,6 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
 @router.get("/alerts")
 async def get_recent_alerts(limit: int = Query(50, ge=1, le=100)):
     """최근 알림 목록"""
-    # TODO: alerts 테이블 추가 후 구현
     return {"alerts": []}
 
 

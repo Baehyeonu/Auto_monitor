@@ -188,7 +188,6 @@ class MonitorService:
             # 수업 시작 감지
             if current_time_obj >= class_start and self.last_class_check != "in_class":
                 if current_time_obj < class_end:
-                    print(f"📚 수업 시작 ({current_time})")
                     await manager.broadcast_system_log(
                         level="info",
                         source="system",
@@ -199,7 +198,6 @@ class MonitorService:
             
             # 수업 종료 감지
             if current_time_obj > class_end and self.last_class_check == "in_class":
-                print(f"📚 수업 종료 ({current_time})")
                 await manager.broadcast_system_log(
                     level="info",
                     source="system",
@@ -217,11 +215,9 @@ class MonitorService:
         is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
         
         if is_lunch_time and self.last_lunch_check != "in_lunch":
-            print(f"🍽️ 점심 시간 시작 ({current_time}) - 카메라 OFF 학생들의 시간 초기화")
             lunch_start_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
             await self.db_service.reset_camera_off_timers(lunch_start_dt)
             self.last_lunch_check = "in_lunch"
-            print(f"   ✅ 카메라 OFF 학생들의 시간이 점심 시작 시간으로 초기화되었습니다.")
             await manager.broadcast_system_log(
                 level="info",
                 source="system",
@@ -231,11 +227,9 @@ class MonitorService:
             return
         
         if not is_lunch_time and self.last_lunch_check == "in_lunch":
-            print(f"🍽️ 점심 시간 종료 ({current_time}) - 카메라 OFF 학생들의 시간 초기화")
             lunch_end_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
             await self.db_service.reset_camera_off_timers(lunch_end_dt)
             self.last_lunch_check = "after_lunch"
-            print(f"   ✅ 카메라 OFF 학생들의 시간이 점심 종료 시간으로 초기화되었습니다.")
             await manager.broadcast_system_log(
                 level="info",
                 source="system",
@@ -516,10 +510,6 @@ class MonitorService:
                 print("   ✅ 초기화 시간 이후 접속한 학생의 상태가 보존됩니다.")
             else:
                 self.is_resetting = True
-                print(f"🧹 프로그램 시작 시 일일 초기화 실행 ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})")
-                print("   ⏸️ 초기화 진행 중... (Slack 로그 처리 일시 중지)")
-                print("   💾 초기화 시간 이후 접속한 학생의 상태는 보존됩니다.")
-                
                 await manager.broadcast_system_log(
                     level="info",
                     source="system",
@@ -532,9 +522,6 @@ class MonitorService:
                 self.last_daily_reset_date = today_str
                 
                 self.is_resetting = False
-                print("   ✅ 알림/접속 종료 상태가 초기화되었습니다. (최근 접속 학생 상태 보존)")
-                print("   ▶️ Slack 로그 처리 재개")
-                
                 await manager.broadcast_system_log(
                     level="success",
                     source="system",
@@ -557,9 +544,6 @@ class MonitorService:
         scheduled_dt = datetime.combine(now.date(), self.daily_reset_time)
         if now >= scheduled_dt:
             self.is_resetting = True
-            print(f"🧹 일일 초기화 실행 ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})")
-            print("   ⏸️ 초기화 진행 중... (Slack 로그 처리 일시 중지)")
-            
             await manager.broadcast_system_log(
                 level="info",
                 source="system",
@@ -573,9 +557,6 @@ class MonitorService:
             self.last_daily_reset_date = today_str
             
             self.is_resetting = False
-            print("   ✅ 알림/접속 종료 상태가 초기화되었습니다.")
-            print("   ▶️ Slack 로그 처리 재개")
-            
             await manager.broadcast_system_log(
                 level="success",
                 source="system",
