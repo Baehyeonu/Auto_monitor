@@ -38,6 +38,7 @@ async def get_students(
 ):
     """학생 목록 조회"""
     students = await db_service.get_all_students()
+    joined_today = await _get_joined_today()
     
     is_admin_bool = None
     if is_admin is not None:
@@ -46,7 +47,6 @@ async def get_students(
     if is_admin_bool is not None:
         students = [s for s in students if s.is_admin == is_admin_bool]
     
-    joined_today = await _get_joined_today()
     filtered_students = students
     
     if status:
@@ -70,6 +70,14 @@ async def get_students(
     
     result_data = []
     for student in paginated:
+        # 미접속자 판단: 오늘 접속하지 않았고, 퇴장하지 않았고, 관리자가 아닌 경우
+        # joined_today에 없고, last_leave_time이 None이고, 관리자가 아니면 미접속
+        is_not_joined = (
+            student.id not in joined_today 
+            and student.last_leave_time is None 
+            and not student.is_admin
+        )
+        
         student_dict = {
             "id": student.id,
             "zep_name": student.zep_name,
@@ -85,7 +93,7 @@ async def get_students(
             "last_leave_time": student.last_leave_time,
             "created_at": student.created_at,
             "updated_at": student.updated_at,
-            "not_joined": student.id not in joined_today and student.last_leave_time is None and not student.is_admin
+            "not_joined": is_not_joined
         }
         result_data.append(student_dict)
     

@@ -339,7 +339,7 @@ class SlackListener:
                 self.joined_students_today.add(student_id)
             
             await self.db_service.clear_absent_status(student_id)
-            await self.db_service.update_camera_status(matched_name, True, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if success and not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(

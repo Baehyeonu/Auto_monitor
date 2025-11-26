@@ -29,7 +29,8 @@ function getStatusBadge(student: Student) {
   }
   
   // 미접속 상태 (오늘 초기화 시간 이후 접속하지 않음) - 우선 체크
-  if (student.not_joined) {
+  // not_joined가 true이거나, last_leave_time이 없고 카메라가 꺼져있고 not_joined가 undefined가 아닌 경우
+  if (student.not_joined === true) {
     return <Badge variant="outline" className="border-gray-400 text-gray-600">미접속</Badge>
   }
   

@@ -30,21 +30,48 @@ export default function StudentsPage() {
   const loadStudents = useCallback(async () => {
     setIsLoading(true)
     try {
+      if (activeTab === 'students') {
+        const studentsData = await fetchStudents({ page: studentPage, limit: PER_PAGE, is_admin: false })
+        setStudents(studentsData.data)
+        setStudentsTotal(studentsData.total)
+      } else {
+        const adminsData = await fetchStudents({ page: adminPage, limit: PER_PAGE, is_admin: true })
+        setAdmins(adminsData.data)
+        setAdminsTotal(adminsData.total)
+      }
+    } catch {
+    } finally {
+      setIsLoading(false)
+    }
+  }, [activeTab, adminPage, studentPage])
+  
+  const loadInitialData = useCallback(async () => {
+    // 처음 로드할 때 두 탭의 총 개수와 첫 페이지 데이터를 모두 불러오기
+    setIsLoading(true)
+    try {
       const [studentsData, adminsData] = await Promise.all([
-        fetchStudents({ page: studentPage, limit: PER_PAGE, is_admin: false }),
-        fetchStudents({ page: adminPage, limit: PER_PAGE, is_admin: true }),
+        fetchStudents({ page: 1, limit: PER_PAGE, is_admin: false }),
+        fetchStudents({ page: 1, limit: PER_PAGE, is_admin: true }),
       ])
       setStudents(studentsData.data)
       setStudentsTotal(studentsData.total)
       setAdmins(adminsData.data)
       setAdminsTotal(adminsData.total)
+      setStudentPage(1)
+      setAdminPage(1)
     } catch {
     } finally {
       setIsLoading(false)
     }
-  }, [adminPage, studentPage])
+  }, [])
 
   useEffect(() => {
+    // 처음 마운트될 때만 초기 데이터 로드
+    loadInitialData()
+  }, [])
+  
+  useEffect(() => {
+    // 탭이나 페이지가 변경될 때 해당 탭의 데이터만 불러오기
     loadStudents()
   }, [loadStudents])
 

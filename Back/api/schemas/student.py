@@ -29,6 +29,7 @@ class StudentResponse(BaseModel):
     is_absent: bool
     absent_type: Optional[str]
     last_leave_time: Optional[datetime]
+    not_joined: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
     
