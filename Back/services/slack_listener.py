@@ -95,12 +95,8 @@ class SlackListener:
             students = await self.db_service.get_all_students()
             self.student_cache = {}
             
-            # 각 학생의 이름과 한글 이름 부분을 모두 캐시에 저장
             for student in students:
-                # 원본 이름
                 self.student_cache[student.zep_name] = student.id
-                
-                # 한글 이름 부분 추출하여 캐시에 추가
                 korean_names = self._extract_all_korean_names(student.zep_name)
                 for korean_name in korean_names:
                     if korean_name not in self.student_cache:
@@ -187,21 +183,17 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
             
-            # 1. 캐시에서 찾기 (한글 이름 부분 포함)
             for name in self._extract_all_korean_names(zep_name_raw):
                 if name in self.student_cache:
                     student_id = self.student_cache[name]
-                    # 실제 DB 이름 찾기
                     student = await self.db_service.get_student_by_id(student_id)
                     if student:
                         matched_name = student.zep_name
                     break
             
-            # 2. 캐시에 없으면 DB에서 부분 일치로 찾기
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    # 한글 이름 부분으로도 시도
                     for name in self._extract_all_korean_names(zep_name_raw):
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
@@ -210,7 +202,6 @@ class SlackListener:
                 if student:
                     student_id = student.id
                     matched_name = student.zep_name
-                    # 캐시에 추가 (원본 이름과 한글 이름 모두)
                     self.student_cache[matched_name] = student_id
                     for name in self._extract_all_korean_names(zep_name_raw):
                         if name not in self.student_cache:
@@ -245,21 +236,17 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
             
-            # 1. 캐시에서 찾기 (한글 이름 부분 포함)
             for name in self._extract_all_korean_names(zep_name_raw):
                 if name in self.student_cache:
                     student_id = self.student_cache[name]
-                    # 실제 DB 이름 찾기
                     student = await self.db_service.get_student_by_id(student_id)
                     if student:
                         matched_name = student.zep_name
                     break
             
-            # 2. 캐시에 없으면 DB에서 부분 일치로 찾기
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    # 한글 이름 부분으로도 시도
                     for name in self._extract_all_korean_names(zep_name_raw):
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
@@ -268,7 +255,6 @@ class SlackListener:
                 if student:
                     student_id = student.id
                     matched_name = student.zep_name
-                    # 캐시에 추가 (원본 이름과 한글 이름 모두)
                     self.student_cache[matched_name] = student_id
                     for name in self._extract_all_korean_names(zep_name_raw):
                         if name not in self.student_cache:
@@ -302,21 +288,17 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
             
-            # 1. 캐시에서 찾기 (한글 이름 부분 포함)
             for name in self._extract_all_korean_names(zep_name_raw):
                 if name in self.student_cache:
                     student_id = self.student_cache[name]
-                    # 실제 DB 이름 찾기
                     student = await self.db_service.get_student_by_id(student_id)
                     if student:
                         matched_name = student.zep_name
                     break
             
-            # 2. 캐시에 없으면 DB에서 부분 일치로 찾기
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    # 한글 이름 부분으로도 시도
                     for name in self._extract_all_korean_names(zep_name_raw):
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
@@ -325,7 +307,6 @@ class SlackListener:
                 if student:
                     student_id = student.id
                     matched_name = student.zep_name
-                    # 캐시에 추가 (원본 이름과 한글 이름 모두)
                     self.student_cache[matched_name] = student_id
                     for name in self._extract_all_korean_names(zep_name_raw):
                         if name not in self.student_cache:
@@ -340,7 +321,6 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             
-            # 재입장 시 접속 종료 상태 초기화 및 카메라 상태를 기본값 OFF로 설정
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
@@ -414,9 +394,7 @@ class SlackListener:
             self.joined_students_today.clear()
             self.last_event_times.clear()
             
-            # 학생 캐시 먼저 로드 (이름 매칭을 위해 필요)
             await self._refresh_student_cache()
-            
             
             now = datetime.now()
             today_reset_dt = None
@@ -481,7 +459,6 @@ class SlackListener:
                 if match_on:
                     zep_name_raw = match_on.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    # 오늘 초기화 시간 이후의 이벤트만 joined_today에 추가
                     add_to_joined = message_ts >= today_reset_ts
                     await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_on_count += 1
@@ -492,7 +469,6 @@ class SlackListener:
                 if match_off:
                     zep_name_raw = match_off.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    # 오늘 초기화 시간 이후의 이벤트만 joined_today에 추가
                     add_to_joined = message_ts >= today_reset_ts
                     await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_off_count += 1
@@ -520,20 +496,16 @@ class SlackListener:
                     processed_count += 1
                     continue
             
-            
             await self.db_service.reset_all_alert_fields()
             
-            # 동기화 후 현재 카메라 상태가 있고, 오늘 날짜에 상태 변경이 있는 학생만 joined_today에 추가
             all_students = await self.db_service.get_all_students()
             today_date = now.date()
             
             for student in all_students:
-                # 카메라 상태가 있고, 접속 종료 상태가 아니고, 오늘 날짜에 상태 변경이 있으면 오늘 접속한 것으로 간주
                 if student.last_status_change and not student.last_leave_time:
                     last_change = student.last_status_change
                     if last_change.tzinfo is None:
                         last_change = last_change.replace(tzinfo=timezone.utc)
-                    # 오늘 날짜의 상태 변경만 joined_today에 추가
                     if last_change.date() == today_date:
                         self.joined_students_today.add(student.id)
             
@@ -542,7 +514,6 @@ class SlackListener:
                 await self.monitor_service.broadcast_dashboard_update_now()
             
         except Exception as e:
-            print(f"   ⚠️ 동기화 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
         finally:
@@ -561,13 +532,7 @@ class SlackListener:
             
             await self._refresh_student_cache()
             
-            # 1. 먼저 히스토리 복원 (동기화)
-            print("   🔄 Slack 히스토리에서 최신 상태 동기화 중...")
             await self.restore_state_from_history(lookback_hours=24)
-            print("   ✅ 동기화 완료")
-            
-            # 2. Socket Mode 시작 (실시간 리스닝)
-            print("   📡 Slack 실시간 리스닝 시작...")
             await self.handler.start_async()
         except Exception as e:
             raise
@@ -581,7 +546,6 @@ class SlackListener:
                     config.SLACK_APP_TOKEN
                 )
             
-            print("   📡 Slack 실시간 리스닝 시작...")
             await self.handler.start_async()
         except Exception as e:
             raise

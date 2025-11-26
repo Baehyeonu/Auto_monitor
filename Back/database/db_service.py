@@ -488,8 +488,6 @@ class DBService:
                     )
                 )
                 await session.commit()
-                print(f"   📊 초기화 대상: {len(student_ids_to_reset)}명 (전체 {len(all_students)}명 중)")
-                print(f"   💾 상태 보존: {len(all_students) - len(student_ids_to_reset)}명 (초기화 시간 이후 접속)")
             
             return reset_time_utc
     

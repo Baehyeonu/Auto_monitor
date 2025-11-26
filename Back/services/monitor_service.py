@@ -257,11 +257,6 @@ class MonitorService:
             elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
                 return
-            else:
-                # 워밍업이 끝났을 때 한 번만 로그
-                if not hasattr(self, '_warmup_completed_logged'):
-                    print(f"✅ [모니터링] 워밍업 완료 - 정상 체크 시작")
-                    self._warmup_completed_logged = True
         
         # 수업 시간 체크
         is_class_time = self._is_class_time()
@@ -471,7 +466,6 @@ class MonitorService:
                         student_id=student.id
                     )
                 else:
-                    print(f"   ❌ 외출/조퇴 알림 전송 실패: {student.zep_name}")
     
     async def _check_return_requests(self):
         """복귀 요청 후 접속하지 않은 학생들 체크"""
@@ -506,7 +500,6 @@ class MonitorService:
                     student_id=student.id
                 )
             else:
-                print(f"   ❌ 복귀 재알림 전송 실패: {student.zep_name}")
 
     def _parse_daily_reset_time(self, time_str: Optional[str]) -> Optional[time]:
         """환경 변수 문자열을 time 객체로 변환"""
