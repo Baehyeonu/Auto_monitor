@@ -47,7 +47,7 @@ export function BulkImport({ onUpdated }: BulkImportProps) {
     e.preventDefault()
   }
 
-  const parseCSV = (text: string): Array<{ zep_name: string; discord_id?: number }> => {
+  const parseCSV = (text: string): Array<{ zep_name: string; discord_id?: string }> => {
     const lines = text.split('\n').filter(line => line.trim())
     if (lines.length === 0) return []
 
@@ -55,7 +55,7 @@ export function BulkImport({ onUpdated }: BulkImportProps) {
     const hasHeader = header.includes('zep_name') || header.includes('discord_id')
     const dataLines = hasHeader ? lines.slice(1) : lines
 
-    const students: Array<{ zep_name: string; discord_id?: number }> = []
+    const students: Array<{ zep_name: string; discord_id?: string }> = []
 
     for (const line of dataLines) {
       const trimmed = line.trim()
@@ -69,13 +69,10 @@ export function BulkImport({ onUpdated }: BulkImportProps) {
 
       if (!zep_name) continue
 
-      const student: { zep_name: string; discord_id?: number } = { zep_name }
+      const student: { zep_name: string; discord_id?: string } = { zep_name }
 
-      if (discord_id_str) {
-        const discord_id = parseInt(discord_id_str, 10)
-        if (!isNaN(discord_id)) {
-          student.discord_id = discord_id
-        }
+      if (discord_id_str && discord_id_str.trim()) {
+        student.discord_id = discord_id_str.trim()
       }
 
       students.push(student)

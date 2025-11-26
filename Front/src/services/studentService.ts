@@ -22,7 +22,7 @@ export async function fetchStudents(params?: {
 
 export async function createStudent(payload: {
   zep_name: string
-  discord_id?: number
+  discord_id?: string
 }) {
   return apiRequest<Student>(API_ROUTES.students, {
     method: 'POST',
@@ -50,7 +50,7 @@ export async function updateAdminStatus(id: number, isAdmin: boolean) {
 }
 
 export async function bulkCreateStudents(
-  students: Array<{ zep_name: string; discord_id?: number }>
+  students: Array<{ zep_name: string; discord_id?: string }>
 ) {
   return apiRequest<{ created: number; failed: number; errors: string[] }>(
     `${API_ROUTES.students}/bulk`,

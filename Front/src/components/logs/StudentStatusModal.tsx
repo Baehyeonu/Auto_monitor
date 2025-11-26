@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { fetchStudents } from '@/services/studentService'
 import type { Student } from '@/types/student'
@@ -46,9 +45,6 @@ function getStatusBadge(student: Student) {
 export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: StudentStatusModalProps) {
   const [students, setStudents] = useState<Student[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const PER_PAGE = 20
 
   const loadStudents = useCallback(async () => {
     if (!open) return
@@ -67,36 +63,24 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
         const joinedStudents = response.data.filter(
           (s) => !s.last_leave_time && !s.not_joined && !s.is_admin
         )
-        const start = (page - 1) * PER_PAGE
-        const end = start + PER_PAGE
-        setStudents(joinedStudents.slice(start, end))
-        setTotal(joinedStudents.length)
+        setStudents(joinedStudents)
       } else {
-        // 관리자 제외하고 학생만 조회
+        // 관리자 제외하고 학생만 조회 (전체 가져오기)
         const response = await fetchStudents({
-          page,
-          limit: PER_PAGE,
+          page: 1,
+          limit: 1000, // 전체 가져오기
           status: status,
           is_admin: false, // 관리자 제외
         })
         // 추가 필터링 (API에서 관리자를 제외했지만, 혹시 모를 경우를 대비)
         const filteredStudents = response.data.filter((s) => !s.is_admin)
         setStudents(filteredStudents)
-        setTotal(response.total)
       }
     } catch (error) {
       console.error('학생 목록 로드 실패:', error)
       setStudents([])
-      setTotal(0)
     } finally {
       setIsLoading(false)
-    }
-  }, [open, page, status])
-
-  useEffect(() => {
-    if (open) {
-      setPage(1)
-      loadStudents()
     }
   }, [open, status])
 
@@ -104,9 +88,7 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
     if (open) {
       loadStudents()
     }
-  }, [page, loadStudents])
-
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE))
+  }, [open, status, loadStudents])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -114,7 +96,7 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
         <DialogHeader>
           <DialogTitle>{statusLabel} 학생 목록</DialogTitle>
           <DialogDescription>
-            총 {total}명의 학생이 있습니다.
+            총 {students.length}명의 학생이 있습니다.
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -127,56 +109,29 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
               <p className="text-sm text-muted-foreground">해당 상태의 학생이 없습니다.</p>
             </div>
           ) : (
-            <>
-              <ScrollArea className="flex-1 pr-4">
-                <div className="space-y-3">
-                  {students.map((student) => (
-                    <div
-                      key={student.id}
-                      className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3"
-                    >
-                      <div className="flex-1">
-                        <p className="font-semibold text-foreground">{student.zep_name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          마지막 상태 변경:{' '}
-                          {student.last_status_change
-                            ? formatKoreanTime(student.last_status_change)
-                            : '정보 없음'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {getStatusBadge(student)}
-                      </div>
+            <ScrollArea className="flex-1 pr-4">
+              <div className="space-y-3">
+                {students.map((student) => (
+                  <div
+                    key={student.id}
+                    className="flex items-center justify-between rounded-lg border border-border/60 px-4 py-3"
+                  >
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">{student.zep_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        마지막 상태 변경:{' '}
+                        {student.last_status_change
+                          ? formatKoreanTime(student.last_status_change)
+                          : '정보 없음'}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-              {totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground pt-4 border-t border-border/60">
-                  <span>
-                    페이지 {page} / {totalPages}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                    >
-                      이전
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage(Math.min(totalPages, page + 1))}
-                      disabled={page === totalPages}
-                    >
-                      다음
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(student)}
+                    </div>
                   </div>
-                </div>
-              )}
-            </>
+                ))}
+              </div>
+            </ScrollArea>
           )}
         </div>
       </DialogContent>

@@ -13,7 +13,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 interface Props {
-  onSubmit: (values: { zep_name: string; discord_id?: number }) => Promise<void>
+  onSubmit: (values: { zep_name: string; discord_id?: string }) => Promise<void>
   isSubmitting: boolean
 }
 
@@ -34,7 +34,7 @@ export function StudentForm({ onSubmit, isSubmitting }: Props) {
   const submit = async (values: FormValues) => {
     await onSubmit({
       zep_name: values.zep_name,
-      discord_id: values.discord_id ? Number(values.discord_id) : undefined,
+      discord_id: values.discord_id || undefined,
     })
     reset()
   }

@@ -1,7 +1,7 @@
 export interface Student {
   id: number
   zep_name: string
-  discord_id?: number | null
+  discord_id?: string | null  // 문자열로 변경 (JavaScript Number 정밀도 손실 방지)
   is_admin: boolean
   is_cam_on: boolean
   last_status_change?: string | null

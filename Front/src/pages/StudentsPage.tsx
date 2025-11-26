@@ -279,7 +279,7 @@ export default function StudentsPage() {
 
   const handleSubmit = async (values: {
     zep_name: string
-    discord_id?: number
+    discord_id?: string
   }) => {
     setIsSubmitting(true)
     try {
