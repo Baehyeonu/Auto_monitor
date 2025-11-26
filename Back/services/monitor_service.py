@@ -164,26 +164,15 @@ class MonitorService:
         
         return True
     
-    async def _check_students(self):
-        """학생들의 카메라 상태 체크"""
-        now = datetime.now()
+    async def _check_schedule_events(self, now: datetime):
+        """수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관하게 실행)"""
         current_time = now.strftime("%H:%M")
-        
-        await self._check_daily_reset(now)
-        
-        if not self.is_monitoring_active():
-            return
-        
-        if self.start_time:
-            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
-            if elapsed < self.warmup_minutes:
-                return
+        current_time_obj = now.time()
         
         # 수업 시작/종료 감지
         try:
             class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
             class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            current_time_obj = now.time()
             
             # 수업 시작 감지
             if current_time_obj >= class_start and self.last_class_check != "in_class":
@@ -208,36 +197,56 @@ class MonitorService:
         except ValueError:
             pass
         
+        # 점심 시간 시작/종료 감지 (수업 시간 내에서만)
+        is_class_time = self._is_class_time()
+        if is_class_time:
+            is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
+            
+            if is_lunch_time and self.last_lunch_check != "in_lunch":
+                lunch_start_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
+                await self.db_service.reset_camera_off_timers(lunch_start_dt)
+                self.last_lunch_check = "in_lunch"
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="lunch_start",
+                    message=f"점심 시간이 시작되었습니다. ({current_time})"
+                )
+            
+            if not is_lunch_time and self.last_lunch_check == "in_lunch":
+                lunch_end_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
+                await self.db_service.reset_camera_off_timers(lunch_end_dt)
+                self.last_lunch_check = "after_lunch"
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="lunch_end",
+                    message=f"점심 시간이 종료되었습니다. ({current_time})"
+                )
+    
+    async def _check_students(self):
+        """학생들의 카메라 상태 체크"""
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+        
+        await self._check_daily_reset(now)
+        
+        # 수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관)
+        await self._check_schedule_events(now)
+        
+        if not self.is_monitoring_active():
+            return
+        
+        if self.start_time:
+            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
+            if elapsed < self.warmup_minutes:
+                return
+        
         is_class_time = self._is_class_time()
         if not is_class_time:
             return
         
         is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
-        
-        if is_lunch_time and self.last_lunch_check != "in_lunch":
-            lunch_start_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
-            await self.db_service.reset_camera_off_timers(lunch_start_dt)
-            self.last_lunch_check = "in_lunch"
-            await manager.broadcast_system_log(
-                level="info",
-                source="system",
-                event_type="lunch_start",
-                message=f"점심 시간이 시작되었습니다. ({current_time})"
-            )
-            return
-        
-        if not is_lunch_time and self.last_lunch_check == "in_lunch":
-            lunch_end_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
-            await self.db_service.reset_camera_off_timers(lunch_end_dt)
-            self.last_lunch_check = "after_lunch"
-            await manager.broadcast_system_log(
-                level="info",
-                source="system",
-                event_type="lunch_end",
-                message=f"점심 시간이 종료되었습니다. ({current_time})"
-            )
-            return
-        
         if is_lunch_time:
             return
         

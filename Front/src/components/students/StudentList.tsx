@@ -28,12 +28,12 @@ function getStatusBadge(student: Student) {
     return <Badge variant="destructive">접속 종료</Badge>
   }
   
-  // 미접속 상태 (오늘 초기화 시간 이후 접속하지 않음)
+  // 미접속 상태 (오늘 초기화 시간 이후 접속하지 않음) - 우선 체크
   if (student.not_joined) {
     return <Badge variant="outline" className="border-gray-400 text-gray-600">미접속</Badge>
   }
   
-  // 미접속 상태 (외출/조퇴)
+  // 외출/조퇴 상태
   if (student.is_absent) {
     return (
       <Badge variant="destructive">
@@ -42,7 +42,7 @@ function getStatusBadge(student: Student) {
     )
   }
   
-  // 카메라 상태
+  // 카메라 상태 (미접속자가 아닌 경우만)
   if (student.is_cam_on) {
     return <Badge variant="default" className="bg-green-600">카메라 ON</Badge>
   } else {
