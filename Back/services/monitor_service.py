@@ -87,12 +87,14 @@ class MonitorService:
         while self.is_running:
             try:
                 await self._check_students()
-                await asyncio.sleep(self.check_interval)
             except Exception as e:
-                print(f"❌ 모니터링 체크 중 오류: {e}")
+                print(f"❌ [모니터링] 체크 중 오류 발생: {e}")
                 import traceback
                 traceback.print_exc()
+            finally:
                 await asyncio.sleep(self.check_interval)
+        
+        print("🛑 [모니터링] 루프 종료")
     
     async def stop(self):
         """모니터링 중지"""
@@ -236,20 +238,32 @@ class MonitorService:
         """학생들의 카메라 상태 체크"""
         now = datetime.now()
         current_time = now.strftime("%H:%M")
+        current_time_obj = now.time()
+        
+        # 함수 진입 확인용 로그 (매번 출력하면 너무 많으니 간헐적으로)
+        # 실제로는 조건 체크 로그로 대체
         
         await self._check_daily_reset(now)
         
         # 수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관)
         await self._check_schedule_events(now)
         
+        # 모니터링 활성화 체크
         if not self.is_monitoring_active():
             return
         
+        # 워밍업 시간 체크
         if self.start_time:
             elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
                 return
+            else:
+                # 워밍업이 끝났을 때 한 번만 로그
+                if not hasattr(self, '_warmup_completed_logged'):
+                    print(f"✅ [모니터링] 워밍업 완료 - 정상 체크 시작")
+                    self._warmup_completed_logged = True
         
+        # 수업 시간 체크
         is_class_time = self._is_class_time()
         if not is_class_time:
             return
@@ -258,7 +272,6 @@ class MonitorService:
         try:
             lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
             lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
-            current_time_obj = now.time()
             is_lunch_time = lunch_start <= current_time_obj < lunch_end
             if is_lunch_time:
                 return
@@ -282,7 +295,6 @@ class MonitorService:
         candidate_students = []
         for student in students:
             if not student.discord_id:
-                print(f"   ⚠️ {student.zep_name}: Discord 미등록 (등록 필요)")
                 continue
             
             if self.discord_bot.is_admin(student.discord_id):
@@ -306,6 +318,9 @@ class MonitorService:
         alert_status = await self.db_service.should_send_alert_batch(student_ids, self.alert_cooldown)
         
         students_to_alert = [s for s in candidate_students if alert_status.get(s.id, False)]
+        
+        if not students_to_alert:
+            return
         
         for student in students_to_alert:
             

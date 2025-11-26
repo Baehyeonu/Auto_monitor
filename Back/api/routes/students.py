@@ -294,6 +294,7 @@ async def send_dm_to_student(student_id: int, request: SendDMRequest):
         )
         return {"success": True, "message": "DM sent successfully"}
     else:
-        raise HTTPException(status_code=500, detail="Failed to send DM")
+        print(f"❌ [API] DM 전송 실패: {student.zep_name} (Discord ID: {student.discord_id}) - discord_bot 함수가 False 반환")
+        raise HTTPException(status_code=500, detail=f"Failed to send DM to {student.zep_name}. Check Discord bot logs for details.")
 
 

@@ -587,8 +587,13 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
+            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            return False
+        except discord.NotFound:
+            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
             return False
         except Exception as e:
+            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
             return False
     
     async def _handle_button_response(self, interaction: discord.Interaction, action: str):
@@ -879,8 +884,13 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
+            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            return False
+        except discord.NotFound:
+            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
             return False
         except Exception as e:
+            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
             return False
     
     async def _handle_admin_absent_response(self, interaction: discord.Interaction, custom_id: str):
@@ -1123,8 +1133,13 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
+            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            return False
+        except discord.NotFound:
+            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
             return False
         except Exception as e:
+            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
             return False
     
     async def send_manual_camera_alert(self, student) -> bool:
@@ -1168,8 +1183,13 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
+            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            return False
+        except discord.NotFound:
+            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
             return False
         except Exception as e:
+            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
             return False
     
     async def send_face_not_visible_alert(self, student) -> bool:
@@ -1201,8 +1221,13 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
+            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            return False
+        except discord.NotFound:
+            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
             return False
         except Exception as e:
+            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
             return False
 
 
