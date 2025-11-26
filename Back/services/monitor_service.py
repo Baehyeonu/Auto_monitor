@@ -465,7 +465,6 @@ class MonitorService:
                         student_name=student.zep_name,
                         student_id=student.id
                     )
-                else:
     
     async def _check_return_requests(self):
         """복귀 요청 후 접속하지 않은 학생들 체크"""
@@ -499,7 +498,6 @@ class MonitorService:
                     student_name=student.zep_name,
                     student_id=student.id
                 )
-            else:
 
     def _parse_daily_reset_time(self, time_str: Optional[str]) -> Optional[time]:
         """환경 변수 문자열을 time 객체로 변환"""
