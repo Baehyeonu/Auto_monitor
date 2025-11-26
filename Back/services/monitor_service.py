@@ -198,10 +198,14 @@ class MonitorService:
             pass
         
         # 점심 시간 시작/종료 감지 (수업 시간 내에서만)
-        is_class_time = self._is_class_time()
-        if is_class_time:
-            is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
+        try:
+            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
+            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
             
+            # 점심 시간인지 확인 (시작 시간 이상, 종료 시간 미만)
+            is_lunch_time = lunch_start <= current_time_obj < lunch_end
+            
+            # 점심 시작 감지 (점심 시간에 진입했을 때)
             if is_lunch_time and self.last_lunch_check != "in_lunch":
                 lunch_start_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
                 await self.db_service.reset_camera_off_timers(lunch_start_dt)
@@ -213,7 +217,9 @@ class MonitorService:
                     message=f"점심 시간이 시작되었습니다. ({current_time})"
                 )
             
-            if not is_lunch_time and self.last_lunch_check == "in_lunch":
+            # 점심 종료 감지 (점심 시간에서 벗어났을 때)
+            # current_time_obj >= lunch_end이면 점심 시간이 아님
+            if current_time_obj >= lunch_end and self.last_lunch_check == "in_lunch":
                 lunch_end_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
                 await self.db_service.reset_camera_off_timers(lunch_end_dt)
                 self.last_lunch_check = "after_lunch"
@@ -223,6 +229,8 @@ class MonitorService:
                     event_type="lunch_end",
                     message=f"점심 시간이 종료되었습니다. ({current_time})"
                 )
+        except ValueError:
+            pass
     
     async def _check_students(self):
         """학생들의 카메라 상태 체크"""
@@ -246,9 +254,16 @@ class MonitorService:
         if not is_class_time:
             return
         
-        is_lunch_time = config.LUNCH_START_TIME <= current_time <= config.LUNCH_END_TIME
-        if is_lunch_time:
-            return
+        # 점심 시간인지 확인 (시간 객체로 비교)
+        try:
+            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
+            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
+            current_time_obj = now.time()
+            is_lunch_time = lunch_start <= current_time_obj < lunch_end
+            if is_lunch_time:
+                return
+        except ValueError:
+            pass
         
         await self._check_left_students()
         
