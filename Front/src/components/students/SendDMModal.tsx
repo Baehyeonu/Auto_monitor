@@ -58,18 +58,16 @@ export function SendDMModal({ open, onOpenChange, student, onBack }: SendDMModal
                 variant="ghost"
                 size="icon"
                 onClick={onBack}
-                className="h-6 w-6"
+                className="h-8 w-8"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             )}
-            <div>
-              <DialogTitle>DM 발신</DialogTitle>
-              <DialogDescription>
-                {student.zep_name}님에게 DM을 전송합니다.
-              </DialogDescription>
-            </div>
+            <DialogTitle>DM 발신</DialogTitle>
           </div>
+          <DialogDescription>
+            {student.zep_name}님에게 DM을 전송합니다.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-4">
           <Button

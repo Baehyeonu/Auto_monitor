@@ -338,8 +338,9 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             
+            # 재입장 시 접속 종료 상태 초기화 및 카메라 상태를 기본값 OFF로 설정
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if success and not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(

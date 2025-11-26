@@ -156,6 +156,8 @@ class DBService:
                 update_values["response_status"] = None
                 update_values["response_time"] = None
                 update_values["alert_count"] = 0
+                # 카메라가 ON이면 접속 종료 상태도 초기화 (재입장한 경우)
+                update_values["last_leave_time"] = None
             
             result = await session.execute(
                 update(Student)
