@@ -16,6 +16,8 @@ import type { WebSocketMessage } from '@/types/websocket'
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [admins, setAdmins] = useState<Student[]>([])
+  const [allStudents, setAllStudents] = useState<Student[]>([])
+  const [allAdmins, setAllAdmins] = useState<Student[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<'students' | 'admins'>('students')
@@ -24,6 +26,8 @@ export default function StudentsPage() {
   const [adminPage, setAdminPage] = useState(1)
   const [studentsTotal, setStudentsTotal] = useState(0)
   const [adminsTotal, setAdminsTotal] = useState(0)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isSelectingStudent, setIsSelectingStudent] = useState(false)
 
   const PER_PAGE = 7
 
@@ -31,11 +35,21 @@ export default function StudentsPage() {
     setIsLoading(true)
     try {
       if (activeTab === 'students') {
-        const studentsData = await fetchStudents({ page: studentPage, limit: PER_PAGE, is_admin: false })
+        const studentsData = await fetchStudents({ 
+          page: studentPage, 
+          limit: PER_PAGE, 
+          is_admin: false,
+          search: searchTerm || undefined
+        })
         setStudents(studentsData.data)
         setStudentsTotal(studentsData.total)
       } else {
-        const adminsData = await fetchStudents({ page: adminPage, limit: PER_PAGE, is_admin: true })
+        const adminsData = await fetchStudents({ 
+          page: adminPage, 
+          limit: PER_PAGE, 
+          is_admin: true,
+          search: searchTerm || undefined
+        })
         setAdmins(adminsData.data)
         setAdminsTotal(adminsData.total)
       }
@@ -43,7 +57,50 @@ export default function StudentsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [activeTab, adminPage, studentPage])
+  }, [activeTab, adminPage, studentPage, searchTerm])
+  
+  const loadAllStudentsForAutocomplete = useCallback(async () => {
+    try {
+      // limit이 100으로 제한되어 있으므로 여러 번 요청
+      const [studentsData, adminsData] = await Promise.all([
+        fetchStudents({ limit: 100, is_admin: false }),
+        fetchStudents({ limit: 100, is_admin: true }),
+      ])
+      setAllStudents(studentsData.data)
+      setAllAdmins(adminsData.data)
+      
+      // 학생이 100명 이상일 경우 추가 페이지 로드
+      if (studentsData.total > 100) {
+        const additionalPages = Math.ceil(studentsData.total / 100) - 1
+        const additionalRequests = []
+        for (let page = 2; page <= additionalPages + 1; page++) {
+          additionalRequests.push(fetchStudents({ page, limit: 100, is_admin: false }))
+        }
+        const additionalResults = await Promise.all(additionalRequests)
+        const allStudentsData = [
+          ...studentsData.data,
+          ...additionalResults.flatMap(result => result.data)
+        ]
+        setAllStudents(allStudentsData)
+      }
+      
+      // 관리자가 100명 이상일 경우 추가 페이지 로드
+      if (adminsData.total > 100) {
+        const additionalPages = Math.ceil(adminsData.total / 100) - 1
+        const additionalRequests = []
+        for (let page = 2; page <= additionalPages + 1; page++) {
+          additionalRequests.push(fetchStudents({ page, limit: 100, is_admin: true }))
+        }
+        const additionalResults = await Promise.all(additionalRequests)
+        const allAdminsData = [
+          ...adminsData.data,
+          ...additionalResults.flatMap(result => result.data)
+        ]
+        setAllAdmins(allAdminsData)
+      }
+    } catch {
+    }
+  }, [])
   
   const loadInitialData = useCallback(async () => {
     // 처음 로드할 때 두 탭의 총 개수와 첫 페이지 데이터를 모두 불러오기
@@ -68,12 +125,94 @@ export default function StudentsPage() {
   useEffect(() => {
     // 처음 마운트될 때만 초기 데이터 로드
     loadInitialData()
+    loadAllStudentsForAutocomplete()
   }, [])
   
   useEffect(() => {
     // 탭이나 페이지가 변경될 때 해당 탭의 데이터만 불러오기
-    loadStudents()
-  }, [loadStudents])
+    // 단, 학생 선택 중일 때는 제외 (handleSelectStudent에서 직접 로드)
+    if (!isSelectingStudent) {
+      loadStudents()
+    }
+  }, [loadStudents, isSelectingStudent])
+  
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term)
+    // 검색어가 변경되면 첫 페이지로 이동하고 검색 실행
+    if (activeTab === 'students') {
+      setStudentPage(1)
+    } else {
+      setAdminPage(1)
+    }
+  }, [activeTab])
+  
+  const handleSelectStudent = useCallback(async (student: Student) => {
+    // 전체 목록에서 해당 학생이 있는 페이지를 찾아서 이동
+    setIsSelectingStudent(true)
+    try {
+      // 전체 목록이 로드되지 않았으면 먼저 로드
+      if ((activeTab === 'students' && allStudents.length === 0) || 
+          (activeTab === 'admins' && allAdmins.length === 0)) {
+        await loadAllStudentsForAutocomplete()
+      }
+      
+      // 전체 목록에서 해당 학생의 인덱스 찾기
+      const targetList = activeTab === 'students' ? allStudents : allAdmins
+      
+      if (targetList.length === 0) {
+        setIsSelectingStudent(false)
+        return
+      }
+      
+      const studentIndex = targetList.findIndex(s => s.id === student.id)
+      
+      if (studentIndex === -1) {
+        setIsSelectingStudent(false)
+        return
+      }
+      
+      // 전체 목록에서 해당 학생이 있는 페이지 계산
+      const targetPage = Math.floor(studentIndex / PER_PAGE) + 1
+      
+      // 페이지 먼저 설정
+      if (activeTab === 'students') {
+        setStudentPage(targetPage)
+      } else {
+        setAdminPage(targetPage)
+      }
+      
+      // 검색어 초기화 (페이지 설정 후)
+      setSearchTerm('')
+      
+      // 직접 데이터 로드 (검색어 없이)
+      setIsLoading(true)
+      try {
+        if (activeTab === 'students') {
+          const studentsData = await fetchStudents({ 
+            page: targetPage, 
+            limit: PER_PAGE, 
+            is_admin: false
+          })
+          setStudents(studentsData.data)
+          setStudentsTotal(studentsData.total)
+        } else {
+          const adminsData = await fetchStudents({ 
+            page: targetPage, 
+            limit: PER_PAGE, 
+            is_admin: true
+          })
+          setAdmins(adminsData.data)
+          setAdminsTotal(adminsData.total)
+        }
+      } finally {
+        setIsLoading(false)
+        setIsSelectingStudent(false)
+      }
+    } catch (error) {
+      console.error('Error selecting student:', error)
+      setIsSelectingStudent(false)
+    }
+  }, [activeTab, allStudents, allAdmins, loadAllStudentsForAutocomplete])
 
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (message.type === 'STUDENT_STATUS_CHANGED') {
@@ -181,6 +320,9 @@ export default function StudentsPage() {
             students={students}
             isLoading={isLoading}
             onRefresh={loadStudents}
+            onSearch={handleSearch}
+            onSelectStudent={handleSelectStudent}
+            allStudents={allStudents}
             pagination={{
               page: studentPage,
               total: studentsTotal,
@@ -208,6 +350,9 @@ export default function StudentsPage() {
             students={admins}
             isLoading={isLoading}
             onRefresh={loadStudents}
+            onSearch={handleSearch}
+            onSelectStudent={handleSelectStudent}
+            allStudents={allAdmins}
             pagination={{
               page: adminPage,
               total: adminsTotal,

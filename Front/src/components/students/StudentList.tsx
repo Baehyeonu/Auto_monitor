@@ -2,10 +2,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Input } from '@/components/ui/input'
 import type { Student } from '@/types/student'
 import { formatKoreanTime } from '@/lib/utils'
 import { SendDMModal } from './SendDMModal'
-import { useState } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Search } from 'lucide-react'
 
 interface Props {
   students: Student[]
@@ -17,6 +19,9 @@ interface Props {
     limit: number
     onPageChange: (page: number) => void
   }
+  onSearch?: (searchTerm: string) => void
+  allStudents?: Student[]
+  onSelectStudent?: (student: Student) => void
 }
 
 function getStatusBadge(student: Student) {
@@ -53,10 +58,94 @@ function getStatusBadge(student: Student) {
   }
 }
 
-export function StudentList({ students, isLoading, onRefresh, pagination }: Props) {
+export function StudentList({ students, isLoading, onRefresh, pagination, onSearch, allStudents = [], onSelectStudent }: Props) {
   const totalPages = pagination ? Math.max(1, Math.ceil(pagination.total / pagination.limit)) : 1
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isDMModalOpen, setIsDMModalOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [focusedIndex, setFocusedIndex] = useState(-1)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+
+  const filteredSuggestions = useMemo(() => {
+    if (!searchTerm || searchTerm.trim().length === 0 || !allStudents || allStudents.length === 0) {
+      return []
+    }
+    const filtered = allStudents.filter((student) =>
+      student.zep_name.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 10)
+    return filtered
+  }, [searchTerm, allStudents])
+
+  useEffect(() => {
+    if (searchTerm && searchTerm.trim().length > 0) {
+      if (filteredSuggestions.length > 0) {
+        setShowSuggestions(true)
+      } else {
+        setShowSuggestions(false)
+      }
+    } else {
+      setShowSuggestions(false)
+    }
+  }, [searchTerm, filteredSuggestions.length])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearchTerm(value)
+    setFocusedIndex(-1)
+    // 자동완성은 로컬 데이터로만 처리, API 호출은 하지 않음
+  }
+
+  const handleSelectStudent = (student: Student) => {
+    setSearchTerm(student.zep_name)
+    setShowSuggestions(false)
+    setFocusedIndex(-1)
+    // 자동완성에서 선택했을 때 해당 학생이 있는 페이지로 이동
+    if (onSelectStudent) {
+      onSelectStudent(student)
+    } else if (onSearch) {
+      // onSelectStudent가 없으면 검색만 실행
+      onSearch(student.zep_name)
+    }
+  }
+  
+  const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchTerm.trim().length > 0) {
+      setShowSuggestions(false)
+      if (onSearch) {
+        onSearch(searchTerm)
+      }
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || filteredSuggestions.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setFocusedIndex((prev) =>
+        prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+      )
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setFocusedIndex((prev) => (prev > 0 ? prev - 1 : -1))
+    } else if (e.key === 'Enter' && focusedIndex >= 0) {
+      e.preventDefault()
+      handleSelectStudent(filteredSuggestions[focusedIndex])
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false)
+    }
+  }
+
+  useEffect(() => {
+    if (focusedIndex >= 0 && suggestionsRef.current) {
+      const focusedElement = suggestionsRef.current.children[focusedIndex] as HTMLElement
+      if (focusedElement) {
+        focusedElement.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [focusedIndex])
 
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student)
@@ -65,12 +154,63 @@ export function StudentList({ students, isLoading, onRefresh, pagination }: Prop
 
   return (
     <>
-      <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <Card className="overflow-visible">
+      <CardHeader className="flex flex-row items-center justify-between relative overflow-visible">
         <CardTitle>학생 목록</CardTitle>
-        <Button variant="outline" size="sm" onClick={onRefresh}>
-          새로고침
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+            <Input
+              ref={inputRef}
+              placeholder="학생 검색..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onKeyDown={(e) => {
+                handleKeyDown(e)
+                handleSearchSubmit(e)
+              }}
+              onFocus={() => {
+                if (searchTerm && searchTerm.trim().length > 0) {
+                  setShowSuggestions(true)
+                }
+              }}
+              onBlur={() => {
+                setTimeout(() => setShowSuggestions(false), 200)
+              }}
+              className="w-64 pl-9"
+            />
+            {showSuggestions && searchTerm && searchTerm.trim().length > 0 && filteredSuggestions.length > 0 && (
+              <div
+                ref={suggestionsRef}
+                className="absolute z-[9999] w-64 left-0 bg-card border border-border rounded-md shadow-xl max-h-60 overflow-auto"
+                style={{ 
+                  top: '100%',
+                  marginTop: '4px',
+                  position: 'absolute'
+                }}
+              >
+                {filteredSuggestions.map((student, index) => (
+                  <div
+                    key={student.id}
+                    className={`px-4 py-2 cursor-pointer hover:bg-muted transition-colors ${
+                      index === focusedIndex ? 'bg-muted' : ''
+                    }`}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      handleSelectStudent(student)
+                    }}
+                    onMouseEnter={() => setFocusedIndex(index)}
+                  >
+                    <p className="font-medium text-sm">{student.zep_name}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={onRefresh}>
+            새로고침
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading && (
