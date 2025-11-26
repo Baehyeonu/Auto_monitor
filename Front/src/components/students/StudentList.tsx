@@ -298,6 +298,10 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
         open={isDMModalOpen}
         onOpenChange={setIsDMModalOpen}
         student={selectedStudent}
+        onBack={() => {
+          setIsDMModalOpen(false)
+          setIsActionModalOpen(true)
+        }}
       />
       <StudentLogModal
         open={isLogModalOpen}

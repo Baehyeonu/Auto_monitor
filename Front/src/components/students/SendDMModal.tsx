@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Camera, LogIn, User } from 'lucide-react'
+import { Camera, LogIn, User, ArrowLeft } from 'lucide-react'
 import type { Student } from '@/types/student'
 
 interface SendDMModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   student: Student | null
+  onBack?: () => void
 }
 
-export function SendDMModal({ open, onOpenChange, student }: SendDMModalProps) {
+export function SendDMModal({ open, onOpenChange, student, onBack }: SendDMModalProps) {
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,10 +52,24 @@ export function SendDMModal({ open, onOpenChange, student }: SendDMModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>DM 발신</DialogTitle>
-          <DialogDescription>
-            {student.zep_name}님에게 DM을 전송합니다.
-          </DialogDescription>
+          <div className="flex items-center gap-2">
+            {onBack && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onBack}
+                className="h-6 w-6"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
+            <div>
+              <DialogTitle>DM 발신</DialogTitle>
+              <DialogDescription>
+                {student.zep_name}님에게 DM을 전송합니다.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
         <div className="space-y-3 py-4">
           <Button
