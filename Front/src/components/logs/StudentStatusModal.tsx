@@ -55,25 +55,47 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
       if (status === null) {
         // 입장 = 카메라 ON + OFF (last_leave_time이 null인 학생)
         // 관리자 제외
-        const response = await fetchStudents({
-          page: 1,
-          limit: 1000, // 전체 가져오기
-          is_admin: false, // 관리자 제외
-        })
-        const joinedStudents = response.data.filter(
+        // limit이 100으로 제한되어 있으므로 여러 페이지를 가져와야 함
+        let allStudents: Student[] = []
+        let page = 1
+        let hasMore = true
+        
+        while (hasMore) {
+          const response = await fetchStudents({
+            page,
+            limit: 100, // API 최대값
+            is_admin: false, // 관리자 제외
+          })
+          allStudents.push(...response.data)
+          hasMore = response.data.length === 100 && allStudents.length < response.total
+          page++
+        }
+        
+        const joinedStudents = allStudents.filter(
           (s) => !s.last_leave_time && !s.not_joined && !s.is_admin
         )
         setStudents(joinedStudents)
       } else {
         // 관리자 제외하고 학생만 조회 (전체 가져오기)
-        const response = await fetchStudents({
-          page: 1,
-          limit: 1000, // 전체 가져오기
-          status: status,
-          is_admin: false, // 관리자 제외
-        })
+        // limit이 100으로 제한되어 있으므로 여러 페이지를 가져와야 함
+        let allStudents: Student[] = []
+        let page = 1
+        let hasMore = true
+        
+        while (hasMore) {
+          const response = await fetchStudents({
+            page,
+            limit: 100, // API 최대값
+            status: status,
+            is_admin: false, // 관리자 제외
+          })
+          allStudents.push(...response.data)
+          hasMore = response.data.length === 100 && allStudents.length < response.total
+          page++
+        }
+        
         // 추가 필터링 (API에서 관리자를 제외했지만, 혹시 모를 경우를 대비)
-        const filteredStudents = response.data.filter((s) => !s.is_admin)
+        const filteredStudents = allStudents.filter((s) => !s.is_admin)
         setStudents(filteredStudents)
       }
     } catch (error) {

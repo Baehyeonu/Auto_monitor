@@ -517,6 +517,14 @@ class SlackListener:
             
             await self.db_service.reset_all_alert_fields()
             
+            # 동기화 후 현재 카메라 상태가 있는 학생들을 joined_today에 추가
+            # (동기화 시 오늘 초기화 시간 이전 이벤트는 joined_today에 추가되지 않을 수 있음)
+            all_students = await self.db_service.get_all_students()
+            for student in all_students:
+                # 카메라 상태가 있고, 접속 종료 상태가 아니면 오늘 접속한 것으로 간주
+                if student.last_status_change and not student.last_leave_time:
+                    self.joined_students_today.add(student.id)
+            
             if self.monitor_service:
                 await asyncio.sleep(0.5)
                 await self.monitor_service.broadcast_dashboard_update_now()
