@@ -36,6 +36,7 @@ class MonitorService:
         self.start_time = None
         self.warmup_minutes = 1
         self.last_lunch_check = None
+        self.last_class_check = None  # 수업 시작/종료 감지용
         self.daily_reset_time = self._parse_daily_reset_time(config.DAILY_RESET_TIME)
         self.last_daily_reset_date: Optional[str] = None
         self.reset_time: Optional[datetime] = None
@@ -178,6 +179,37 @@ class MonitorService:
             if elapsed < self.warmup_minutes:
                 return
         
+        # 수업 시작/종료 감지
+        try:
+            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+            class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
+            current_time_obj = now.time()
+            
+            # 수업 시작 감지
+            if current_time_obj >= class_start and self.last_class_check != "in_class":
+                if current_time_obj < class_end:
+                    print(f"📚 수업 시작 ({current_time})")
+                    await manager.broadcast_system_log(
+                        level="info",
+                        source="system",
+                        event_type="class_start",
+                        message=f"수업이 시작되었습니다. ({current_time})"
+                    )
+                    self.last_class_check = "in_class"
+            
+            # 수업 종료 감지
+            if current_time_obj > class_end and self.last_class_check == "in_class":
+                print(f"📚 수업 종료 ({current_time})")
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="class_end",
+                    message=f"수업이 종료되었습니다. ({current_time})"
+                )
+                self.last_class_check = "after_class"
+        except ValueError:
+            pass
+        
         is_class_time = self._is_class_time()
         if not is_class_time:
             return
@@ -190,6 +222,12 @@ class MonitorService:
             await self.db_service.reset_camera_off_timers(lunch_start_dt)
             self.last_lunch_check = "in_lunch"
             print(f"   ✅ 카메라 OFF 학생들의 시간이 점심 시작 시간으로 초기화되었습니다.")
+            await manager.broadcast_system_log(
+                level="info",
+                source="system",
+                event_type="lunch_start",
+                message=f"점심 시간이 시작되었습니다. ({current_time})"
+            )
             return
         
         if not is_lunch_time and self.last_lunch_check == "in_lunch":
@@ -198,6 +236,12 @@ class MonitorService:
             await self.db_service.reset_camera_off_timers(lunch_end_dt)
             self.last_lunch_check = "after_lunch"
             print(f"   ✅ 카메라 OFF 학생들의 시간이 점심 종료 시간으로 초기화되었습니다.")
+            await manager.broadcast_system_log(
+                level="info",
+                source="system",
+                event_type="lunch_end",
+                message=f"점심 시간이 종료되었습니다. ({current_time})"
+            )
             return
         
         if is_lunch_time:
@@ -264,6 +308,15 @@ class MonitorService:
                         alert_type='camera_off_exceeded',
                         alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다.'
                     )
+                    # DM 전송 로그
+                    await manager.broadcast_system_log(
+                        level="info",
+                        source="discord",
+                        event_type="dm_sent",
+                        message=f"DM 전송: {student.zep_name}님에게 카메라 OFF 알림 ({elapsed_minutes}분 경과)",
+                        student_name=student.zep_name,
+                        student_id=student.id
+                    )
             else:
                 await self.discord_bot.send_camera_alert_to_admin(student)
                 
@@ -273,6 +326,15 @@ class MonitorService:
                     zep_name=student.zep_name,
                     alert_type='camera_off_admin',
                     alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (관리자 알림)'
+                )
+                # 관리자 알림 로그
+                await manager.broadcast_system_log(
+                    level="warning",
+                    source="discord",
+                    event_type="dm_sent",
+                    message=f"관리자 알림: {student.zep_name}님 카메라 OFF ({elapsed_minutes}분 경과)",
+                    student_name=student.zep_name,
+                    student_id=student.id
                 )
         
         if students_to_alert:
@@ -330,6 +392,15 @@ class MonitorService:
                     alert_type='leave_alert',
                     alert_message=f'{student.zep_name}님이 접속을 종료한 지 {elapsed_minutes}분이 지났습니다.'
                 )
+                # 관리자 접속 종료 알림 로그
+                await manager.broadcast_system_log(
+                    level="warning",
+                    source="discord",
+                    event_type="dm_sent",
+                    message=f"관리자 알림: {student.zep_name}님 접속 종료 ({elapsed_minutes}분 경과)",
+                    student_name=student.zep_name,
+                    student_id=student.id
+                )
             
             if alerted_ids:
                 await self.db_service.record_leave_admin_alerts_sent_batch(alerted_ids)
@@ -357,6 +428,15 @@ class MonitorService:
                         alert_type='absent_alert',
                         alert_message=f'{student.zep_name}님 {absent_type_text} 확인 - 접속 종료 후 {elapsed_minutes}분 경과'
                     )
+                    # 외출/조퇴 알림 DM 전송 로그
+                    await manager.broadcast_system_log(
+                        level="warning",
+                        source="discord",
+                        event_type="dm_sent",
+                        message=f"DM 전송: {student.zep_name}님에게 {absent_type_text} 알림 ({elapsed_minutes}분 경과)",
+                        student_name=student.zep_name,
+                        student_id=student.id
+                    )
                 else:
                     print(f"   ❌ 외출/조퇴 알림 전송 실패: {student.zep_name}")
     
@@ -383,6 +463,15 @@ class MonitorService:
             
             if success:
                 await self.db_service.record_return_request(student.id)
+                # 복귀 요청 DM 전송 로그
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="discord",
+                    event_type="dm_sent",
+                    message=f"DM 전송: {student.zep_name}님에게 복귀 요청 알림",
+                    student_name=student.zep_name,
+                    student_id=student.id
+                )
             else:
                 print(f"   ❌ 복귀 재알림 전송 실패: {student.zep_name}")
 
@@ -431,6 +520,13 @@ class MonitorService:
                 print("   ⏸️ 초기화 진행 중... (Slack 로그 처리 일시 중지)")
                 print("   💾 초기화 시간 이후 접속한 학생의 상태는 보존됩니다.")
                 
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="daily_reset",
+                    message=f"일일 초기화가 진행 중입니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
+                )
+                
                 reset_time = await self.db_service.reset_alert_status_preserving_recent(scheduled_dt_utc)
                 self.reset_time = reset_time
                 self.last_daily_reset_date = today_str
@@ -438,6 +534,13 @@ class MonitorService:
                 self.is_resetting = False
                 print("   ✅ 알림/접속 종료 상태가 초기화되었습니다. (최근 접속 학생 상태 보존)")
                 print("   ▶️ Slack 로그 처리 재개")
+                
+                await manager.broadcast_system_log(
+                    level="success",
+                    source="system",
+                    event_type="daily_reset",
+                    message=f"일일 초기화가 완료되었습니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
+                )
         else:
             print(f"⏰ 일일 초기화 시간 전입니다 ({scheduled_dt.strftime('%H:%M')})")
             print("   💾 이전 상태를 유지합니다.")
@@ -457,6 +560,13 @@ class MonitorService:
             print(f"🧹 일일 초기화 실행 ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})")
             print("   ⏸️ 초기화 진행 중... (Slack 로그 처리 일시 중지)")
             
+            await manager.broadcast_system_log(
+                level="info",
+                source="system",
+                event_type="daily_reset",
+                message=f"일일 초기화가 진행 중입니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
+            )
+            
             reset_time_utc = scheduled_dt.replace(tzinfo=timezone.utc)
             reset_time = await self.db_service.reset_all_alert_status()
             self.reset_time = reset_time
@@ -465,6 +575,13 @@ class MonitorService:
             self.is_resetting = False
             print("   ✅ 알림/접속 종료 상태가 초기화되었습니다.")
             print("   ▶️ Slack 로그 처리 재개")
+            
+            await manager.broadcast_system_log(
+                level="success",
+                source="system",
+                event_type="daily_reset",
+                message=f"일일 초기화가 완료되었습니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
+            )
     
     async def _get_dashboard_overview(self) -> dict:
         """대시보드 현황 데이터 수집"""

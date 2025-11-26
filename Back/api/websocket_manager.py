@@ -129,6 +129,36 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         await self.broadcast_to_dashboard(message)
+    
+    async def broadcast_system_log(
+        self,
+        level: str,
+        source: str,
+        event_type: str,
+        message: str,
+        student_name: str = None,
+        student_id: int = None
+    ):
+        """시스템 로그 브로드캐스트"""
+        log_entry = {
+            "id": f"log_{datetime.now().timestamp()}",
+            "timestamp": datetime.now().isoformat(),
+            "level": level,
+            "source": source,
+            "event_type": event_type,
+            "message": message,
+        }
+        if student_name:
+            log_entry["student_name"] = student_name
+        if student_id:
+            log_entry["student_id"] = student_id
+        
+        message = {
+            "type": "LOG",
+            "payload": log_entry,
+            "timestamp": datetime.now().isoformat()
+        }
+        await self.broadcast_to_dashboard(message)
 
 
 manager = ConnectionManager()

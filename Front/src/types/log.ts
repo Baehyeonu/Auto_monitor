@@ -13,6 +13,11 @@ export type EventType =
   | 'system_start'
   | 'system_stop'
   | 'daily_reset'
+  | 'class_start'
+  | 'class_end'
+  | 'lunch_start'
+  | 'lunch_end'
+  | 'dm_sent'
   | 'error'
   | 'dashboard_update'
 
