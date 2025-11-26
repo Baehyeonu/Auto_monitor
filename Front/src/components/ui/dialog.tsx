@@ -46,17 +46,19 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <DialogContext.Provider value={{ open, onOpenChange }}>
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              onOpenChange(false)
-            }
-          }}
-        >
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
-          {children}
-        </div>
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+            onClick={() => onOpenChange(false)}
+          />
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+          >
+            <div className="pointer-events-auto">
+              {children}
+            </div>
+          </div>
+        </>
       )}
     </DialogContext.Provider>
   )
@@ -73,7 +75,14 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           "relative z-50 w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-lg",
           className
         )}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          // 모달 내용 클릭 시 이벤트 전파 중지 (모달이 닫히지 않도록)
+          e.stopPropagation()
+        }}
+        onMouseDown={(e) => {
+          // 마우스 다운 이벤트도 전파 중지
+          e.stopPropagation()
+        }}
         {...props}
       >
         <Button
