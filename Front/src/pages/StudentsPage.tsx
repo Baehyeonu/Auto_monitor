@@ -134,17 +134,8 @@ export default function StudentsPage() {
     if (!isSelectingStudent) {
       loadStudents()
     }
-  }, [loadStudents, isSelectingStudent])
-  
-  const handleSearch = useCallback((term: string) => {
-    setSearchTerm(term)
-    // 검색어가 변경되면 첫 페이지로 이동하고 검색 실행
-    if (activeTab === 'students') {
-      setStudentPage(1)
-    } else {
-      setAdminPage(1)
-    }
-  }, [activeTab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, adminPage, studentPage, searchTerm, isSelectingStudent])
   
   const handleSelectStudent = useCallback(async (student: Student) => {
     // 전체 목록에서 해당 학생이 있는 페이지를 찾아서 이동
@@ -174,15 +165,18 @@ export default function StudentsPage() {
       // 전체 목록에서 해당 학생이 있는 페이지 계산
       const targetPage = Math.floor(studentIndex / PER_PAGE) + 1
       
-      // 페이지 먼저 설정
+      // 검색어 먼저 초기화 (loadStudents 재생성 방지)
+      setSearchTerm('')
+      
+      // 페이지 설정 (검색어 초기화 후)
       if (activeTab === 'students') {
         setStudentPage(targetPage)
       } else {
         setAdminPage(targetPage)
       }
       
-      // 검색어 초기화 (페이지 설정 후)
-      setSearchTerm('')
+      // 상태 업데이트가 완료될 때까지 약간의 지연
+      await new Promise(resolve => setTimeout(resolve, 0))
       
       // 직접 데이터 로드 (검색어 없이)
       setIsLoading(true)
@@ -206,13 +200,49 @@ export default function StudentsPage() {
         }
       } finally {
         setIsLoading(false)
-        setIsSelectingStudent(false)
+        // 플래그는 나중에 리셋 (useEffect가 다시 실행되지 않도록)
+        setTimeout(() => {
+          setIsSelectingStudent(false)
+        }, 200)
       }
     } catch (error) {
       console.error('Error selecting student:', error)
       setIsSelectingStudent(false)
     }
   }, [activeTab, allStudents, allAdmins, loadAllStudentsForAutocomplete])
+  
+  const handleSearch = useCallback(async (term: string) => {
+    // 1. 검색어가 비어있으면 초기화 및 현재 페이지 새로고침
+    if (!term.trim()) {
+      setSearchTerm('')
+      loadStudents()
+      return
+    }
+    
+    // 2. 현재 탭에 맞는 전체 목록 가져오기 (이미 loadAllStudentsForAutocomplete로 로드되어 있음)
+    const targetList = activeTab === 'students' ? allStudents : allAdmins
+    
+    // 3. 로컬 데이터에서 학생 찾기 (정확 일치 우선, 없으면 포함 검색)
+    let student = targetList.find(s => s.zep_name === term)
+    
+    if (!student) {
+      // 정확히 일치하는 이름이 없으면 포함된 이름 검색 (가장 첫 번째 결과)
+      student = targetList.find(s => s.zep_name.includes(term))
+    }
+    
+    if (student) {
+      // 4. 학생을 찾았으면 handleSelectStudent를 재사용하여 해당 페이지로 이동
+      await handleSelectStudent(student)
+    } else {
+      // 5. 로컬 목록에 없으면 기존 방식대로 필터링 시도
+      setSearchTerm(term)
+      if (activeTab === 'students') {
+        setStudentPage(1)
+      } else {
+        setAdminPage(1)
+      }
+    }
+  }, [activeTab, allStudents, allAdmins, handleSelectStudent, loadStudents])
 
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     if (message.type === 'STUDENT_STATUS_CHANGED') {
