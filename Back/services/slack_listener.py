@@ -145,7 +145,6 @@ class SlackListener:
     async def _broadcast_status_change(self, student_id: int, zep_name: str, event_type: str, is_cam_on: bool):
         """브로드캐스트를 비동기로 실행하는 헬퍼 함수"""
         try:
-            print(f"   📡 브로드캐스트 시도: {zep_name} ({event_type}), 구독자 수: {len(manager.dashboard_subscribers)}")
             await manager.broadcast_student_status_changed(
                 student_id=student_id,
                 zep_name=zep_name,
@@ -153,11 +152,10 @@ class SlackListener:
                 is_cam_on=is_cam_on,
                 elapsed_minutes=0
             )
-            print(f"   ✅ 브로드캐스트 완료: {zep_name} ({event_type})")
             if self.monitor_service:
                 await self.monitor_service.broadcast_dashboard_update_now()
-        except Exception as e:
-            print(f"   ❌ 브로드캐스트 오류: {e}")
+        except Exception:
+            pass
     
     def _setup_handlers(self):
         @self.app.event("message")
@@ -167,13 +165,9 @@ class SlackListener:
                 message_ts_str = event.get("ts", "")
                 message_ts = float(message_ts_str) if message_ts_str else 0
                 
-                # 디버깅: 모든 메시지 로그
-                if text:
-                    print(f"   📬 Slack 이벤트 수신: {text[:80]}...")
-                
                 asyncio.create_task(self._process_message_async(text, message_ts))
-            except Exception as e:
-                print(f"   ❌ 메시지 핸들러 오류: {e}")
+            except Exception:
+                pass
     
     async def _process_message_async(self, text: str, message_ts: float):
         """메시지를 비동기로 처리"""
@@ -191,11 +185,6 @@ class SlackListener:
                     return
             
             message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
-            
-            # 디버깅: 메시지 내용 로그 (처음 100자만)
-            if any(keyword in text.lower() for keyword in ['카메라', '접속', '입장', '퇴장']):
-                print(f"   📨 Slack 메시지 수신: {text[:100]}")
-                print(f"   🔍 is_restoring: {self.is_restoring}")
             
             match_on = self.pattern_cam_on.search(text)
             if match_on:
@@ -265,7 +254,6 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                print(f"   ⚠️ 학생을 찾을 수 없음: {zep_name_raw} (추출된 이름: {zep_name})")
                 return
             
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
@@ -277,21 +265,15 @@ class SlackListener:
             success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
             
             if not success:
-                print(f"   ⚠️ 카메라 상태 업데이트 실패: {matched_name}")
                 return
             
-            print(f"   ✅ 카메라 ON 처리: {matched_name} (ID: {student_id}), is_restoring: {self.is_restoring}")
-            
             if not self.is_restoring:
-                print(f"   🔔 브로드캐스트 호출: {matched_name} (camera_on)")
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
                     zep_name=matched_name,
                     event_type='camera_on',
                     is_cam_on=True
                 ))
-            else:
-                print(f"   ⏸️ 동기화 중이므로 브로드캐스트 건너뜀: {matched_name}")
         except Exception:
             pass
     
@@ -325,7 +307,6 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                print(f"   ⚠️ 학생을 찾을 수 없음: {zep_name_raw} (추출된 이름: {zep_name})")
                 return
             
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
@@ -336,21 +317,15 @@ class SlackListener:
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
             if not success:
-                print(f"   ⚠️ 카메라 상태 업데이트 실패: {matched_name}")
                 return
             
-            print(f"   ✅ 카메라 OFF 처리: {matched_name} (ID: {student_id}), is_restoring: {self.is_restoring}")
-            
             if not self.is_restoring:
-                print(f"   🔔 브로드캐스트 호출: {matched_name} (camera_off)")
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
                     zep_name=matched_name,
                     event_type='camera_off',
                     is_cam_on=False
                 ))
-            else:
-                print(f"   ⏸️ 동기화 중이므로 브로드캐스트 건너뜀: {matched_name}")
         except Exception:
             pass
     
@@ -384,7 +359,6 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                print(f"   ⚠️ 학생을 찾을 수 없음: {zep_name_raw} (추출된 이름: {zep_name})")
                 return
             
             if self._is_duplicate_event(student_id, "user_join", message_ts):
@@ -396,19 +370,13 @@ class SlackListener:
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
-            if success:
-                print(f"   ✅ 입장 처리: {matched_name} (ID: {student_id}), is_restoring: {self.is_restoring}")
-            
             if success and not self.is_restoring:
-                print(f"   🔔 브로드캐스트 호출: {matched_name} (user_join)")
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
                     zep_name=matched_name,
                     event_type='user_join',
                     is_cam_on=False
                 ))
-            elif success:
-                print(f"   ⏸️ 동기화 중이므로 브로드캐스트 건너뜀: {matched_name}")
         except Exception:
             pass
     
@@ -448,7 +416,6 @@ class SlackListener:
                             self.student_cache[name] = student_id
             
             if not student_id:
-                print(f"   ⚠️ 학생을 찾을 수 없음: {zep_name_raw} (추출된 이름: {zep_name})")
                 return
             
             if self._is_duplicate_event(student_id, "user_leave", message_ts):
@@ -457,19 +424,13 @@ class SlackListener:
             await self.db_service.record_user_leave(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
             
-            if success:
-                print(f"   ✅ 퇴장 처리: {matched_name} (ID: {student_id}), is_restoring: {self.is_restoring}")
-            
             if success and not self.is_restoring:
-                print(f"   🔔 브로드캐스트 호출: {matched_name} (user_leave)")
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
                     zep_name=matched_name,
                     event_type='user_leave',
                     is_cam_on=False
                 ))
-            elif success:
-                print(f"   ⏸️ 동기화 중이므로 브로드캐스트 건너뜀: {matched_name}")
         except Exception:
             pass
     
@@ -539,9 +500,6 @@ class SlackListener:
             
             messages.sort(key=lambda msg: float(msg.get("ts", 0)))
             
-            # 동기화 완료 후 is_restoring 해제
-            print(f"   📋 동기화 완료: {len(messages)}개 메시지 처리, is_restoring 해제 예정")
-            
             processed_count = 0
             camera_on_count = 0
             camera_off_count = 0
@@ -609,7 +567,6 @@ class SlackListener:
             
             # 동기화 완료 후 is_restoring 해제
             self.is_restoring = False
-            print(f"   ✅ 동기화 완료, is_restoring = False로 설정됨 (joined_today: {len(self.joined_students_today)}명)")
             
             if self.monitor_service:
                 await asyncio.sleep(0.5)
@@ -642,23 +599,14 @@ class SlackListener:
     async def start_listener(self):
         """Socket Mode 리스너만 시작 (동기화 제외)"""
         try:
-            print(f"   🔌 start_listener() 호출됨")
             if not self.handler:
-                print(f"   🔌 핸들러 생성 중... (APP_TOKEN: {config.SLACK_APP_TOKEN[:20] if config.SLACK_APP_TOKEN else 'None'}...)")
                 self.handler = AsyncSocketModeHandler(
                     self.app,
                     config.SLACK_APP_TOKEN
                 )
-            else:
-                print(f"   🔌 기존 핸들러 사용")
             
-            print(f"   🔌 Socket Mode 핸들러 시작 중...")
             await self.handler.start_async()
-            print(f"   ✅ Socket Mode 핸들러 시작 완료 - 메시지 수신 대기 중...")
         except Exception as e:
-            import traceback
-            print(f"   ❌ Socket Mode 핸들러 시작 실패: {e}")
-            traceback.print_exc()
             raise
     
     async def stop(self):
