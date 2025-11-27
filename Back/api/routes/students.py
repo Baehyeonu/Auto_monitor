@@ -62,35 +62,73 @@ async def get_students(
             # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
             filtered_students = [s for s in filtered_students if not s.is_cam_on and not s.last_leave_time and s.id in joined_today]
         elif status == "left":
-            # 오늘 날짜에 퇴장한 학생만 필터링
+            # 오늘 날짜에 퇴장한 학생만 필터링 (로컬 시간 기준)
+            # 단, 미접속 조건에 해당하지 않는 경우만
             today = date.today()
             result = []
             for s in filtered_students:
-                if s.last_leave_time is not None:
-                    leave_time = s.last_leave_time
-                    if leave_time.tzinfo is None:
-                        leave_date = leave_time.date()
+                # 미접속 체크 (퇴장보다 우선)
+                is_not_joined = False
+                
+                if s.last_status_change:
+                    status_change = s.last_status_change
+                    if status_change.tzinfo is None:
+                        status_change_utc = status_change.replace(tzinfo=timezone.utc)
                     else:
-                        leave_date = leave_time.astimezone(timezone.utc).date()
-                    if leave_date == today:
+                        status_change_utc = status_change
+                    from zoneinfo import ZoneInfo
+                    status_change_local = status_change_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                    status_date = status_change_local.date()
+                    if status_date < today:
+                        is_not_joined = True
+                
+                if s.last_leave_time:
+                    leave_time = s.last_leave_time
+                    # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
+                    if leave_time.tzinfo is None:
+                        leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
+                    else:
+                        leave_time_utc = leave_time
+                    # 로컬 시간대(Asia/Seoul, UTC+9)로 변환
+                    from zoneinfo import ZoneInfo
+                    leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                    leave_date = leave_time_local.date()
+                    
+                    # 어제 이전에 퇴장한 학생은 미접속
+                    if leave_date < today:
+                        is_not_joined = True
+                    # 오늘 퇴장한 학생이면서 미접속이 아닌 경우만 퇴장으로 표시
+                    elif leave_date == today and not is_not_joined:
                         result.append(s)
             filtered_students = result
         elif status == "not_joined":
-            # 미접속: 오늘 접속하지 않았고, 오늘 퇴장하지 않은 학생
+            # 미접속: 오늘 접속하지 않았고, 오늘 퇴장하지 않은 학생 (로컬 시간 기준)
+            # last_status_change를 우선 기준으로 사용 (더 정확함)
             today = date.today()
             result = []
             for s in filtered_students:
                 if s.id not in joined_today and not s.is_admin:
-                    if s.last_leave_time is None:
+                    # last_status_change를 우선 사용
+                    check_time = None
+                    if s.last_status_change is not None:
+                        check_time = s.last_status_change
+                    elif s.last_leave_time is not None:
+                        check_time = s.last_leave_time
+                    
+                    if check_time is None:
                         result.append(s)
                     else:
-                        leave_time = s.last_leave_time
-                        if leave_time.tzinfo is None:
-                            leave_date = leave_time.date()
+                        # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
+                        if check_time.tzinfo is None:
+                            check_time_utc = check_time.replace(tzinfo=timezone.utc)
                         else:
-                            leave_date = leave_time.astimezone(timezone.utc).date()
-                        # 어제 이전에 퇴장한 경우만 미접속
-                        if leave_date < today:
+                            check_time_utc = check_time
+                        # 로컬 시간대(Asia/Seoul, UTC+9)로 변환
+                        from zoneinfo import ZoneInfo
+                        check_time_local = check_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                        check_date = check_time_local.date()
+                        # 어제 이전 날짜면 미접속
+                        if check_date < today:
                             result.append(s)
             filtered_students = result
     
@@ -105,20 +143,31 @@ async def get_students(
     result_data = []
     today = date.today()
     for student in paginated:
-        # 미접속자 판단: 오늘 접속하지 않았고, 관리자가 아닌 경우
+        # 미접속자 판단: 오늘 접속하지 않았고, 관리자가 아닌 경우 (로컬 시간 기준)
         # joined_today에 없고, (last_leave_time이 None이거나 어제 이전 날짜)이고, 관리자가 아니면 미접속
         is_not_joined = False
         if student.id not in joined_today and not student.is_admin:
-            if student.last_leave_time is None:
+            # last_status_change를 우선 기준으로 사용 (더 정확함)
+            check_time = None
+            if student.last_status_change is not None:
+                check_time = student.last_status_change
+            elif student.last_leave_time is not None:
+                check_time = student.last_leave_time
+            
+            if check_time is None:
                 is_not_joined = True
             else:
-                leave_time = student.last_leave_time
-                if leave_time.tzinfo is None:
-                    leave_date = leave_time.date()
+                # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
+                if check_time.tzinfo is None:
+                    check_time_utc = check_time.replace(tzinfo=timezone.utc)
                 else:
-                    leave_date = leave_time.astimezone(timezone.utc).date()
-                # 어제 이전에 퇴장한 경우도 미접속
-                if leave_date < today:
+                    check_time_utc = check_time
+                # 로컬 시간대(Asia/Seoul, UTC+9)로 변환
+                from zoneinfo import ZoneInfo
+                check_time_local = check_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                check_date = check_time_local.date()
+                # 어제 이전 날짜면 미접속
+                if check_date < today:
                     is_not_joined = True
         
         student_dict = {

@@ -165,10 +165,6 @@ class SlackListener:
                 message_ts_str = event.get("ts", "")
                 message_ts = float(message_ts_str) if message_ts_str else 0
                 
-                # 카메라/접속 관련 메시지만 로그
-                if any(keyword in text for keyword in ['카메라', '접속', '입장', '퇴장']):
-                    print(f"   📨 {text[:60]}...")
-                
                 asyncio.create_task(self._process_message_async(text, message_ts))
             except Exception:
                 pass
@@ -278,7 +274,6 @@ class SlackListener:
                     event_type='camera_on',
                     is_cam_on=True
                 ))
-                print(f"   ✅ {matched_name} 카메라 ON")
         except Exception:
             pass
     
@@ -331,7 +326,6 @@ class SlackListener:
                     event_type='camera_off',
                     is_cam_on=False
                 ))
-                print(f"   ✅ {matched_name} 카메라 OFF")
         except Exception:
             pass
     
@@ -383,7 +377,6 @@ class SlackListener:
                     event_type='user_join',
                     is_cam_on=False
                 ))
-                print(f"   ✅ {matched_name} 입장")
         except Exception:
             pass
     
@@ -438,7 +431,6 @@ class SlackListener:
                     event_type='user_leave',
                     is_cam_on=False
                 ))
-                print(f"   ✅ {matched_name} 퇴장")
         except Exception:
             pass
     

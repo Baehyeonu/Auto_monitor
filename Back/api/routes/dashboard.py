@@ -39,26 +39,56 @@ async def get_overview():
     non_admin_students = [s for s in students if not s.is_admin]
     today = date.today()
     
+    from zoneinfo import ZoneInfo
+    
     for student in non_admin_students:
-        # 오늘 퇴장한 학생
+        # 1. 미접속 체크 (퇴장보다 우선)
+        # - last_status_change가 어제 이전이면 미접속
+        # - 또는 last_leave_time이 어제 이전이면 미접속
+        is_not_joined = False
+        
+        if student.last_status_change:
+            status_change = student.last_status_change
+            if status_change.tzinfo is None:
+                status_change_utc = status_change.replace(tzinfo=timezone.utc)
+            else:
+                status_change_utc = status_change
+            status_change_local = status_change_utc.astimezone(ZoneInfo("Asia/Seoul"))
+            status_date = status_change_local.date()
+            
+            # 어제 이전에 상태 변경이 있었으면 미접속
+            if status_date < today:
+                is_not_joined = True
+        
+        # last_leave_time이 어제 이전이면 미접속
         if student.last_leave_time:
             leave_time = student.last_leave_time
             if leave_time.tzinfo is None:
-                leave_date = leave_time.date()
+                leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
             else:
-                leave_date = leave_time.astimezone(timezone.utc).date()
+                leave_time_utc = leave_time
+            leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
+            leave_date = leave_time_local.date()
             
-            if leave_date == today:
-                left += 1
-            # 어제 이전에 퇴장한 학생은 미접속으로 분류
-            elif leave_date < today:
-                if student.id not in joined_today:
-                    not_joined += 1
-        # 미접속: 오늘 접속하지 않았고, 퇴장하지 않은 학생
-        elif student.id not in joined_today:
+            if leave_date < today:
+                # 어제 이전에 퇴장한 학생 → 미접속
+                is_not_joined = True
+            elif leave_date == today:
+                # 오늘 퇴장한 학생 → 퇴장 (미접속이 아닌 경우만)
+                if not is_not_joined:
+                    left += 1
+                    continue
+        
+        # joined_today에 없고 시간 정보도 없으면 미접속
+        if not is_not_joined and student.id not in joined_today and not student.last_status_change and not student.last_leave_time:
+            is_not_joined = True
+        
+        if is_not_joined:
             not_joined += 1
-        # 접속 중인 학생
-        elif student.is_cam_on:
+            continue
+        
+        # 접속 중인 학생 (카메라 상태)
+        if student.is_cam_on:
             camera_on += 1
         else:
             camera_off += 1
@@ -120,29 +150,61 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
             # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
             result.append(status_data)
         elif filter == "left":
-            # 오늘 날짜에 퇴장한 학생만
+            # 오늘 날짜에 퇴장한 학생만 (로컬 시간 기준)
+            # 단, 미접속 조건에 해당하지 않는 경우만
+            today = date.today()
+            from zoneinfo import ZoneInfo
+            
+            # 미접속 체크 (퇴장보다 우선)
+            is_not_joined = False
+            
+            if student.last_status_change:
+                status_change = student.last_status_change
+                if status_change.tzinfo is None:
+                    status_change_utc = status_change.replace(tzinfo=timezone.utc)
+                else:
+                    status_change_utc = status_change
+                status_change_local = status_change_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                status_date = status_change_local.date()
+                if status_date < today:
+                    is_not_joined = True
+            
             if student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
-                    leave_date = leave_time.date()
+                    leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
                 else:
-                    leave_date = leave_time.astimezone(timezone.utc).date()
-                if leave_date == date.today():
+                    leave_time_utc = leave_time
+                leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                leave_date = leave_time_local.date()
+                
+                # 어제 이전에 퇴장한 학생은 미접속
+                if leave_date < today:
+                    is_not_joined = True
+                # 오늘 퇴장한 학생이면서 미접속이 아닌 경우만 퇴장으로 표시
+                elif leave_date == today and not is_not_joined:
                     result.append(status_data)
         elif filter == "not_joined":
-            # 미접속: 오늘 접속하지 않았고, 오늘 퇴장하지 않은 학생
+            # 미접속: last_status_change가 어제 이전이거나 시간 정보가 없는 학생
+            today = date.today()
+            from zoneinfo import ZoneInfo
+            
             if student.id not in joined_today and not student.is_admin:
-                if student.last_leave_time is None:
-                    result.append(status_data)
-                else:
-                    leave_time = student.last_leave_time
-                    if leave_time.tzinfo is None:
-                        leave_date = leave_time.date()
+                # last_status_change를 기준으로 판단 (가장 정확함)
+                if student.last_status_change:
+                    status_change = student.last_status_change
+                    if status_change.tzinfo is None:
+                        status_change_utc = status_change.replace(tzinfo=timezone.utc)
                     else:
-                        leave_date = leave_time.astimezone(timezone.utc).date()
-                    # 어제 이전에 퇴장한 경우만 미접속
-                    if leave_date < date.today():
+                        status_change_utc = status_change
+                    status_change_local = status_change_utc.astimezone(ZoneInfo("Asia/Seoul"))
+                    status_date = status_change_local.date()
+                    # 어제 이전 날짜면 미접속
+                    if status_date < today:
                         result.append(status_data)
+                # 시간 정보가 없으면 미접속
+                elif not student.last_status_change and not student.last_leave_time:
+                    result.append(status_data)
     
     return {"students": result}
 
