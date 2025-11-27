@@ -103,14 +103,23 @@ async def get_students(
     paginated = filtered_students[start:end]
     
     result_data = []
+    today = date.today()
     for student in paginated:
-        # 미접속자 판단: 오늘 접속하지 않았고, 퇴장하지 않았고, 관리자가 아닌 경우
-        # joined_today에 없고, last_leave_time이 None이고, 관리자가 아니면 미접속
-        is_not_joined = (
-            student.id not in joined_today 
-            and student.last_leave_time is None 
-            and not student.is_admin
-        )
+        # 미접속자 판단: 오늘 접속하지 않았고, 관리자가 아닌 경우
+        # joined_today에 없고, (last_leave_time이 None이거나 어제 이전 날짜)이고, 관리자가 아니면 미접속
+        is_not_joined = False
+        if student.id not in joined_today and not student.is_admin:
+            if student.last_leave_time is None:
+                is_not_joined = True
+            else:
+                leave_time = student.last_leave_time
+                if leave_time.tzinfo is None:
+                    leave_date = leave_time.date()
+                else:
+                    leave_date = leave_time.astimezone(timezone.utc).date()
+                # 어제 이전에 퇴장한 경우도 미접속
+                if leave_date < today:
+                    is_not_joined = True
         
         student_dict = {
             "id": student.id,
