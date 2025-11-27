@@ -165,6 +165,10 @@ class SlackListener:
                 message_ts_str = event.get("ts", "")
                 message_ts = float(message_ts_str) if message_ts_str else 0
                 
+                # 카메라/접속 관련 메시지만 로그
+                if any(keyword in text for keyword in ['카메라', '접속', '입장', '퇴장']):
+                    print(f"   📨 {text[:60]}...")
+                
                 asyncio.create_task(self._process_message_async(text, message_ts))
             except Exception:
                 pass
@@ -274,6 +278,7 @@ class SlackListener:
                     event_type='camera_on',
                     is_cam_on=True
                 ))
+                print(f"   ✅ {matched_name} 카메라 ON")
         except Exception:
             pass
     
@@ -326,6 +331,7 @@ class SlackListener:
                     event_type='camera_off',
                     is_cam_on=False
                 ))
+                print(f"   ✅ {matched_name} 카메라 OFF")
         except Exception:
             pass
     
@@ -377,6 +383,7 @@ class SlackListener:
                     event_type='user_join',
                     is_cam_on=False
                 ))
+                print(f"   ✅ {matched_name} 입장")
         except Exception:
             pass
     
@@ -431,6 +438,7 @@ class SlackListener:
                     event_type='user_leave',
                     is_cam_on=False
                 ))
+                print(f"   ✅ {matched_name} 퇴장")
         except Exception:
             pass
     
@@ -442,30 +450,41 @@ class SlackListener:
             
             await self._refresh_student_cache()
             
-            now = datetime.now()
-            today_reset_dt = None
+            # monitor_service의 reset_time 사용 (UTC 기준)
+            now_utc = datetime.now(timezone.utc)
+            now_local = datetime.now()
             
-            if config.DAILY_RESET_TIME:
+            if self.monitor_service and self.monitor_service.reset_time:
+                # monitor_service의 reset_time 사용 (이미 UTC)
+                reset_time_utc = self.monitor_service.reset_time
+                today_reset_ts = reset_time_utc.timestamp()
+                # 24시간 전부터 조회
+                oldest_dt = reset_time_utc - timedelta(hours=24)
+                oldest_ts = oldest_dt.timestamp()
+            elif config.DAILY_RESET_TIME:
                 from datetime import time as time_type
                 try:
                     reset_time = datetime.strptime(config.DAILY_RESET_TIME, "%H:%M").time()
-                    today_reset = datetime.combine(now.date(), reset_time)
+                    today_reset_local = datetime.combine(now_local.date(), reset_time)
                     
-                    if now < today_reset:
-                        oldest_dt = today_reset - timedelta(days=1)
-                        today_reset_dt = today_reset - timedelta(days=1)
-                    else:
-                        oldest_dt = today_reset
-                        today_reset_dt = today_reset
+                    if now_local < today_reset_local:
+                        today_reset_local = today_reset_local - timedelta(days=1)
+                    
+                    # UTC로 변환
+                    today_reset_utc = today_reset_local.replace(tzinfo=timezone.utc)
+                    today_reset_ts = today_reset_utc.timestamp()
+                    oldest_dt = today_reset_utc - timedelta(hours=24)
+                    oldest_ts = oldest_dt.timestamp()
                 except ValueError:
-                    oldest_dt = datetime.combine(now.date(), time_type(0, 0))
-                    today_reset_dt = oldest_dt
+                    oldest_dt_local = datetime.combine(now_local.date(), time_type(0, 0))
+                    oldest_dt = oldest_dt_local.replace(tzinfo=timezone.utc)
+                    today_reset_ts = oldest_dt.timestamp()
+                    oldest_ts = oldest_dt.timestamp()
             else:
-                oldest_dt = datetime.combine(now.date(), datetime.min.time())
-                today_reset_dt = oldest_dt
-            
-            oldest_ts = oldest_dt.timestamp()
-            today_reset_ts = today_reset_dt.timestamp() if today_reset_dt else oldest_ts
+                oldest_dt_local = datetime.combine(now_local.date(), datetime.min.time())
+                oldest_dt = oldest_dt_local.replace(tzinfo=timezone.utc)
+                today_reset_ts = oldest_dt.timestamp()
+                oldest_ts = oldest_dt.timestamp()
             
             messages = []
             cursor = None
@@ -554,15 +573,21 @@ class SlackListener:
             
             await self.db_service.reset_all_alert_fields()
             
+            # joined_students_today 복원: DB의 last_status_change를 기준으로 오늘 접속한 학생 추가
             all_students = await self.db_service.get_all_students()
-            today_date = now.date()
+            now_utc = datetime.now(timezone.utc)
+            today_date_utc = now_utc.date()
             
             for student in all_students:
                 if student.last_status_change and not student.last_leave_time:
                     last_change = student.last_status_change
                     if last_change.tzinfo is None:
                         last_change = last_change.replace(tzinfo=timezone.utc)
-                    if last_change.date() == today_date:
+                    else:
+                        last_change = last_change.astimezone(timezone.utc)
+                    
+                    # UTC 기준으로 날짜 비교
+                    if last_change.date() == today_date_utc:
                         self.joined_students_today.add(student.id)
             
             # 동기화 완료 후 is_restoring 해제

@@ -34,6 +34,12 @@ export function useWebSocket({
     wsRef.current = null
   }, [])
 
+  const send = useCallback((message: WebSocketMessage) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message))
+    }
+  }, [])
+
   const connect = useCallback(() => {
     cleanup()
     const endpoint = url ?? WS_URL
@@ -48,11 +54,14 @@ export function useWebSocket({
       setIsConnected(true)
       reconnectAttemptsRef.current = 0
       onConnect?.()
-      send({
-        type: 'SUBSCRIBE_DASHBOARD',
-        payload: {},
-        timestamp: new Date().toISOString(),
-      })
+      // WebSocket이 열린 직후 구독 메시지 전송
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'SUBSCRIBE_DASHBOARD',
+          payload: {},
+          timestamp: new Date().toISOString(),
+        }))
+      }
     }
 
     wsRef.current.onmessage = (event) => {
@@ -88,12 +97,6 @@ export function useWebSocket({
     reconnectInterval,
     url,
   ])
-
-  const send = useCallback((message: WebSocketMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message))
-    }
-  }, [])
 
   useEffect(() => {
     connect()
