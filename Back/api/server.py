@@ -91,11 +91,14 @@ async def health_check():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 엔드포인트"""
     await manager.connect(websocket)
+    print(f"   🔌 WebSocket 연결됨 (현재 연결 수: {len(manager.active_connections)})")
     try:
         while True:
             data = await websocket.receive_json()
             await manager.handle_message(websocket, data)
     except WebSocketDisconnect:
+        print(f"   🔌 WebSocket 연결 해제됨")
         manager.disconnect(websocket)
-    except Exception:
+    except Exception as e:
+        print(f"   ❌ WebSocket 오류: {e}")
         manager.disconnect(websocket)

@@ -38,9 +38,11 @@ class ConnectionManager:
         
         if msg_type == "SUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.add(websocket)
+            print(f"   ✅ 대시보드 구독 추가 (현재 구독자 수: {len(self.dashboard_subscribers)})")
         
         elif msg_type == "UNSUBSCRIBE_DASHBOARD":
             self.dashboard_subscribers.discard(websocket)
+            print(f"   📤 대시보드 구독 해제 (현재 구독자 수: {len(self.dashboard_subscribers)})")
         
         elif msg_type == "PING":
             await self.send_personal_message(websocket, {
@@ -64,12 +66,16 @@ class ConnectionManager:
     async def broadcast_to_dashboard(self, message: dict):
         """대시보드 구독자들에게 브로드캐스트"""
         if not self.dashboard_subscribers:
+            print(f"   ⚠️ 대시보드 구독자가 없음 (메시지 타입: {message.get('type')})")
             return
+        
+        print(f"   📤 {len(self.dashboard_subscribers)}명에게 메시지 전송: {message.get('type')}")
         
         async def send_to_client(websocket: WebSocket):
             try:
                 await websocket.send_json(message)
-            except Exception:
+            except Exception as e:
+                print(f"   ❌ 클라이언트 전송 실패: {e}")
                 self.disconnect(websocket)
         
         await asyncio.gather(
