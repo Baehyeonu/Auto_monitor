@@ -1,0 +1,127 @@
+### Discord / Slack 설정 가이드
+
+---
+
+## 1. Discord 봇 설정
+
+### 1-1. Discord 애플리케이션 생성
+
+1. `https://discord.com/developers/applications` 접속  
+2. **New Application** 클릭  
+3. 이름 입력 (예: `ZEP_Monitor_Bot`) → **Create**
+
+### 1-2. Bot 추가 및 Bot Token 확인
+
+1. 왼쪽 메뉴에서 **Bot** 탭 선택  
+2. **Add Bot** 클릭 → Yes 확인  
+3. Bot 탭에서:
+   - **Privileged Gateway Intents** 세 개 모두 **On**
+     - Presence Intent  
+     - Server Members Intent  
+     - Message Content Intent  
+4. 같은 페이지에서 **TOKEN 섹션 → Reset Token / Copy** 로 토큰 복사  
+   - 이 값이 `.env` 의 `DISCORD_BOT_TOKEN` 에 들어가는 값입니다.  
+   - 예: `DISCORD_BOT_TOKEN=xxxx.yyyy.zzzz`
+
+> 토큰은 절대 깃허브 등에 올리지 말고, 노출되면 반드시 Reset 후 새 값으로 교체하세요.
+
+### 1-3. 봇을 서버에 초대하기 (OAuth2 설정)
+
+1. 왼쪽 메뉴 **OAuth2 → URL Generator** 이동  
+2. **SCOPES** 에서 `bot` 체크  
+3. **BOT PERMISSIONS** 에서 최소 권한 선택:
+   - `View Channels`
+   - `Send Messages`
+   - (선택) `Read Message History`  
+4. 맨 아래 생성된 **URL 복사 → 브라우저에서 열기**  
+5. 봇을 추가할 **서버 선택 → 승인(Authorize)**
+
+이제 디스코드 봇이 서버에 들어왔고, `DISCORD_BOT_TOKEN` 을 `.env` 에 넣으면 준비 완료입니다.
+
+---
+
+## 2. Slack 앱 / 토큰 설정
+
+> 이 프로젝트는 **Socket Mode** 로 슬랙 이벤트를 받습니다.  
+> 필요 토큰:
+> - `SLACK_BOT_TOKEN` (xoxb-…)
+> - `SLACK_APP_TOKEN` (xapp-…)
+
+### 2-1. Slack 앱 생성
+
+1. `https://api.slack.com/apps` 접속  
+2. **Create New App → From scratch** 선택  
+3. 앱 이름 / 워크스페이스 선택 후 생성
+
+### 2-2. Socket Mode 활성화
+
+1. 앱 설정 페이지 왼쪽 메뉴에서 **Socket Mode** 선택  
+2. **Enable Socket Mode** 토글을 **On**
+
+---
+
+### 2-3. Event Subscriptions 설정
+
+1. 왼쪽 메뉴에서 **Event Subscriptions** 선택  
+2. 상단 **Enable Events** 토글을 **On**  
+3. **Subscribe to bot events** 섹션에서 이벤트 추가:
+   - `message.channels`
+   - `message.groups`  
+4. 저장 (Save) 버튼 클릭
+
+> Socket Mode 를 사용하므로 Request URL 은 따로 설정할 필요 없습니다.
+
+---
+
+### 2-4. Bot Token Scopes 설정 및 `SLACK_BOT_TOKEN` 발급
+
+1. 왼쪽 메뉴 **OAuth & Permissions** 선택  
+2. **Bot Token Scopes** 에 아래 스코프 추가 (이미 있으면 그대로 두기):
+   - `channels:history`
+   - `channels:read`
+   - `chat:write`
+   - `groups:history`
+   - `groups:read`
+   - `users:read`
+3. 같은 페이지 상단에서 **Install App to Workspace** 또는 **Reinstall to Workspace** 클릭  
+4. 설치 후 표시되는 **Bot User OAuth Token (xoxb-…)** 복사  
+   - 이 값이 `.env` 의 `SLACK_BOT_TOKEN` 에 들어가는 값입니다.  
+   - 예: `SLACK_BOT_TOKEN=xoxb-...`
+
+> 만약 **Install App** 할 때 “Bot user is required” 같은 오류가 나오면,  
+> 왼쪽 메뉴 **App Home → Your App’s Presence in Slack** 에서  
+> **App Display Name (Bot Name)** 를 한 번 설정/저장한 뒤 다시 Install 을 시도하면 해결됩니다.
+
+---
+
+### 2-5. App-Level Token 생성 및 `SLACK_APP_TOKEN` 발급 (Socket Mode 용)
+
+1. 왼쪽 메뉴 **Basic Information** 선택  
+2. 하단 **App-Level Tokens** 섹션으로 이동  
+3. **Generate Token and Scopes** 버튼 클릭  
+4. 토큰 이름 입력 (예: `socket-mode-token`)  
+5. **Scopes** 에서 `connections:write` 체크  
+6. 생성 후 표시되는 **App-Level Token (xapp-…)** 복사  
+   - 이 값이 `.env` 의 `SLACK_APP_TOKEN` 에 들어가는 값입니다.  
+   - 예: `SLACK_APP_TOKEN=xapp-1-...`
+
+---
+
+## 3. .env 예시
+
+```env
+# Discord
+DISCORD_BOT_TOKEN=디스코드_봇_토큰_xxx
+
+# Slack
+SLACK_BOT_TOKEN=xoxb-슬랙_봇_토큰_xxx
+SLACK_APP_TOKEN=xapp-슬랙_앱_레벨_토큰_xxx
+```
+
+`.env` 를 수정한 뒤에는 다음 명령으로 컨테이너를 다시 올려서 적용합니다.
+
+```bash
+docker compose up -d --build
+```
+
+
