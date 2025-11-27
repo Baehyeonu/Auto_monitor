@@ -4,7 +4,9 @@ ZEP로부터 Slack 채널에 전송된 메시지를 실시간으로 감지하고
 """
 import re
 import asyncio
-from typing import Optional, Dict, Tuple
+import json
+from pathlib import Path
+from typing import Optional, Dict, Tuple, List
 from datetime import datetime, timedelta, timezone
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
@@ -29,6 +31,7 @@ class SlackListener:
         self.student_cache: Dict[str, int] = {}
         
         self.role_keywords = {"조교", "주강사", "멘토", "매니저"}
+        self.ignore_keywords: List[str] = self._load_ignore_keywords()
         
         self.pattern_cam_on = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:켰습니다|on\s*되었습니다)")
         self.pattern_cam_off = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:껐습니다|off\s*되었습니다)")
@@ -36,6 +39,41 @@ class SlackListener:
         self.pattern_join = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님이?\s*.*(입장|접속했습니다|들어왔습니다)")
         
         self._setup_handlers()
+    
+    def _load_ignore_keywords(self) -> List[str]:
+        """설정 파일에서 무시할 키워드 목록 로드"""
+        settings_file = Path(__file__).parent.parent / "data" / "settings.json"
+        default_keywords = ["test", "monitor", "debug", "temp"]
+        
+        if not settings_file.exists():
+            return default_keywords
+        
+        try:
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            keywords = data.get("ignore_keywords", default_keywords)
+            if isinstance(keywords, list):
+                return [str(kw).lower() for kw in keywords if kw]
+            return default_keywords
+        except Exception:
+            return default_keywords
+    
+    def _should_ignore_name(self, zep_name: str) -> bool:
+        """
+        특정 키워드가 포함된 이름인지 확인
+        구분자(_, -, ., 공백, 괄호)로 분리하여 키워드 체크
+        """
+        if not zep_name or not self.ignore_keywords:
+            return False
+        
+        # 구분자로 분리: _, -, ., 공백, 괄호 등
+        parts = re.split(r'[/_\-.\s()]+', zep_name.lower())
+        
+        # 분리된 부분 중 하나라도 키워드와 일치하면 무시
+        for part in parts:
+            if part and part in [kw.lower() for kw in self.ignore_keywords]:
+                return True
+        
+        return False
     
     def _extract_name_only(self, zep_name: str) -> str:
         parts = re.split(r'[/_\-|\s]+', zep_name.strip())
@@ -151,6 +189,8 @@ class SlackListener:
             match_on = self.pattern_cam_on.search(text)
             if match_on:
                 zep_name_raw = match_on.group(1)
+                if self._should_ignore_name(zep_name_raw):
+                    return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
                 return
@@ -158,6 +198,8 @@ class SlackListener:
             match_off = self.pattern_cam_off.search(text)
             if match_off:
                 zep_name_raw = match_off.group(1)
+                if self._should_ignore_name(zep_name_raw):
+                    return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
                 return
@@ -165,6 +207,8 @@ class SlackListener:
             match_leave = self.pattern_leave.search(text)
             if match_leave:
                 zep_name_raw = match_leave.group(1)
+                if self._should_ignore_name(zep_name_raw):
+                    return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
                 return
@@ -172,6 +216,8 @@ class SlackListener:
             match_join = self.pattern_join.search(text)
             if match_join:
                 zep_name_raw = match_join.group(1)
+                if self._should_ignore_name(zep_name_raw):
+                    return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
                 return

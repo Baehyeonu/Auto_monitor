@@ -2,7 +2,8 @@
 설정 API
 """
 from fastapi import APIRouter, Query, HTTPException
-from typing import Optional
+from typing import Optional, List
+from pydantic import BaseModel
 
 from config import config
 from api.schemas.settings import SettingsResponse, SettingsUpdate
@@ -191,5 +192,69 @@ async def sync_from_slack():
         return {"success": True, "message": "슬랙에서 최신 상태로 동기화가 완료되었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"동기화 실패: {str(e)}")
+
+
+class IgnoreKeywordsResponse(BaseModel):
+    keywords: List[str]
+
+
+class IgnoreKeywordsUpdate(BaseModel):
+    keywords: List[str]
+
+
+@router.get("/ignore-keywords", response_model=IgnoreKeywordsResponse)
+async def get_ignore_keywords():
+    """무시할 키워드 목록 조회"""
+    from pathlib import Path
+    import json
+    
+    settings_file = Path(__file__).parent.parent.parent / "data" / "settings.json"
+    default_keywords = ["test", "monitor", "debug", "temp"]
+    
+    if not settings_file.exists():
+        return {"keywords": default_keywords}
+    
+    try:
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        keywords = data.get("ignore_keywords", default_keywords)
+        if isinstance(keywords, list):
+            return {"keywords": [str(kw) for kw in keywords if kw]}
+        return {"keywords": default_keywords}
+    except Exception:
+        return {"keywords": default_keywords}
+
+
+@router.put("/ignore-keywords", response_model=IgnoreKeywordsResponse)
+async def update_ignore_keywords(data: IgnoreKeywordsUpdate):
+    """무시할 키워드 목록 수정"""
+    from pathlib import Path
+    import json
+    
+    settings_file = Path(__file__).parent.parent.parent / "data" / "settings.json"
+    
+    # 기존 설정 로드
+    existing_data = {}
+    if settings_file.exists():
+        try:
+            existing_data = json.loads(settings_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    
+    # 키워드 업데이트
+    existing_data["ignore_keywords"] = [str(kw).strip() for kw in data.keywords if kw and kw.strip()]
+    
+    # 파일 저장
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    settings_file.write_text(
+        json.dumps(existing_data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    
+    # SlackListener에 키워드 갱신 알림 (선택사항)
+    system = await wait_for_system_instance(timeout=2)
+    if system and system.slack_listener:
+        system.slack_listener.ignore_keywords = [kw.lower() for kw in data.keywords if kw]
+    
+    return {"keywords": existing_data["ignore_keywords"]}
 
 

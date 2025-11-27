@@ -29,3 +29,11 @@ export type SettingsUpdatePayload = Partial<
   >
 >
 
+export interface IgnoreKeywordsResponse {
+  keywords: string[]
+}
+
+export interface IgnoreKeywordsUpdate {
+  keywords: string[]
+}
+
