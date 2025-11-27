@@ -1,7 +1,7 @@
 """
 대시보드 API
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from fastapi import APIRouter, Query
 
 from database import DBService
@@ -37,12 +37,27 @@ async def get_overview():
     threshold_minutes = config.CAMERA_OFF_THRESHOLD
     
     non_admin_students = [s for s in students if not s.is_admin]
+    today = date.today()
     
     for student in non_admin_students:
+        # 오늘 퇴장한 학생
         if student.last_leave_time:
-            left += 1
-        elif student.id not in joined_today and student.last_leave_time is None:
+            leave_time = student.last_leave_time
+            if leave_time.tzinfo is None:
+                leave_date = leave_time.date()
+            else:
+                leave_date = leave_time.astimezone(timezone.utc).date()
+            
+            if leave_date == today:
+                left += 1
+            # 어제 이전에 퇴장한 학생은 미접속으로 분류
+            elif leave_date < today:
+                if student.id not in joined_today:
+                    not_joined += 1
+        # 미접속: 오늘 접속하지 않았고, 퇴장하지 않은 학생
+        elif student.id not in joined_today:
             not_joined += 1
+        # 접속 중인 학생
         elif student.is_cam_on:
             camera_on += 1
         else:
@@ -104,10 +119,30 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
         elif filter == "camera_off" and not student.is_cam_on and not student.last_leave_time and student.id in joined_today:
             # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
             result.append(status_data)
-        elif filter == "left" and student.last_leave_time:
-            result.append(status_data)
-        elif filter == "not_joined" and student.id not in joined_today and student.last_leave_time is None and not student.is_admin:
-            result.append(status_data)
+        elif filter == "left":
+            # 오늘 날짜에 퇴장한 학생만
+            if student.last_leave_time:
+                leave_time = student.last_leave_time
+                if leave_time.tzinfo is None:
+                    leave_date = leave_time.date()
+                else:
+                    leave_date = leave_time.astimezone(timezone.utc).date()
+                if leave_date == date.today():
+                    result.append(status_data)
+        elif filter == "not_joined":
+            # 미접속: 오늘 접속하지 않았고, 오늘 퇴장하지 않은 학생
+            if student.id not in joined_today and not student.is_admin:
+                if student.last_leave_time is None:
+                    result.append(status_data)
+                else:
+                    leave_time = student.last_leave_time
+                    if leave_time.tzinfo is None:
+                        leave_date = leave_time.date()
+                    else:
+                        leave_date = leave_time.astimezone(timezone.utc).date()
+                    # 어제 이전에 퇴장한 경우만 미접속
+                    if leave_date < date.today():
+                        result.append(status_data)
     
     return {"students": result}
 

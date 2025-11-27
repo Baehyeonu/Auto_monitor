@@ -2,6 +2,7 @@
 학생 관리 API
 """
 from typing import Optional, List
+from datetime import datetime, timezone, date
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -61,9 +62,37 @@ async def get_students(
             # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
             filtered_students = [s for s in filtered_students if not s.is_cam_on and not s.last_leave_time and s.id in joined_today]
         elif status == "left":
-            filtered_students = [s for s in filtered_students if s.last_leave_time is not None]
+            # 오늘 날짜에 퇴장한 학생만 필터링
+            today = date.today()
+            result = []
+            for s in filtered_students:
+                if s.last_leave_time is not None:
+                    leave_time = s.last_leave_time
+                    if leave_time.tzinfo is None:
+                        leave_date = leave_time.date()
+                    else:
+                        leave_date = leave_time.astimezone(timezone.utc).date()
+                    if leave_date == today:
+                        result.append(s)
+            filtered_students = result
         elif status == "not_joined":
-            filtered_students = [s for s in filtered_students if s.id not in joined_today and s.last_leave_time is None]
+            # 미접속: 오늘 접속하지 않았고, 오늘 퇴장하지 않은 학생
+            today = date.today()
+            result = []
+            for s in filtered_students:
+                if s.id not in joined_today and not s.is_admin:
+                    if s.last_leave_time is None:
+                        result.append(s)
+                    else:
+                        leave_time = s.last_leave_time
+                        if leave_time.tzinfo is None:
+                            leave_date = leave_time.date()
+                        else:
+                            leave_date = leave_time.astimezone(timezone.utc).date()
+                        # 어제 이전에 퇴장한 경우만 미접속
+                        if leave_date < today:
+                            result.append(s)
+            filtered_students = result
     
     if search:
         filtered_students = [s for s in filtered_students if search.lower() in s.zep_name.lower()]

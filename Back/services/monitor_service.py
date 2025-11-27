@@ -609,12 +609,27 @@ class MonitorService:
         
         non_admin_students = [s for s in students if not s.is_admin]
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
+        today = date.today()
         
         for student in non_admin_students:
+            # 오늘 퇴장한 학생
             if student.last_leave_time:
-                left += 1
-            elif student.id not in joined_today and student.last_leave_time is None:
+                leave_time = student.last_leave_time
+                if leave_time.tzinfo is None:
+                    leave_date = leave_time.date()
+                else:
+                    leave_date = leave_time.astimezone(timezone.utc).date()
+                
+                if leave_date == today:
+                    left += 1
+                # 어제 이전에 퇴장한 학생은 미접속으로 분류
+                elif leave_date < today:
+                    if student.id not in joined_today:
+                        not_joined += 1
+            # 미접속: 오늘 접속하지 않았고, 퇴장하지 않은 학생
+            elif student.id not in joined_today:
                 not_joined += 1
+            # 접속 중인 학생
             elif student.is_cam_on:
                 camera_on += 1
             else:
