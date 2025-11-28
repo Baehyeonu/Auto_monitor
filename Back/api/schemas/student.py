@@ -44,6 +44,10 @@ class StudentResponse(BaseModel):
     is_absent: bool
     absent_type: Optional[str]
     last_leave_time: Optional[datetime]
+    status_type: Optional[str] = None
+    status_set_at: Optional[datetime] = None
+    alarm_blocked_until: Optional[datetime] = None
+    status_auto_reset_date: Optional[datetime] = None
     not_joined: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
@@ -55,7 +59,7 @@ class StudentResponse(BaseModel):
             return None
         return str(value)
     
-    @field_serializer('last_status_change', 'last_alert_sent', 'last_leave_time', 'created_at', 'updated_at')
+    @field_serializer('last_status_change', 'last_alert_sent', 'last_leave_time', 'status_set_at', 'alarm_blocked_until', 'status_auto_reset_date', 'created_at', 'updated_at')
     def serialize_datetime(self, value: Optional[datetime], _info):
         """datetime을 UTC timezone을 포함한 ISO 형식으로 직렬화"""
         if value is None:
@@ -74,3 +78,16 @@ class AdminStatusUpdate(BaseModel):
     is_admin: bool
 
 
+class StudentStatusUpdate(BaseModel):
+    status_type: Optional[str] = None  # "late", "leave", "early_leave", "vacation", "absence", None (정상)
+    
+    @field_validator('status_type')
+    @classmethod
+    def validate_status_type(cls, v):
+        """상태 타입 검증"""
+        if v is None:
+            return None
+        valid_types = ["late", "leave", "early_leave", "vacation", "absence"]
+        if v not in valid_types:
+            raise ValueError(f"status_type must be one of {valid_types} or None")
+        return v

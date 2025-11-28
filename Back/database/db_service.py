@@ -950,4 +950,139 @@ class DBService:
             )
             await session.commit()
             return result.rowcount > 0
+    
+    @staticmethod
+    async def set_student_status(student_id: int, status_type: Optional[str]) -> bool:
+        """
+        학생 상태 설정 (지각, 외출, 조퇴, 휴가, 결석)
+        
+        Args:
+            student_id: 학생 ID
+            status_type: "late", "leave", "early_leave", "vacation", "absence", None (정상)
+            
+        Returns:
+            업데이트 성공 여부
+        """
+        async with AsyncSessionLocal() as session:
+            now = utcnow()
+            now_naive = to_naive(now)
+            
+            # 상태별 알람 금지 로직 설정
+            alarm_blocked_until = None
+            status_auto_reset_date = None
+            
+            if status_type == "late" or status_type == "leave":
+                # 지각/외출: 상태 변화가 있을 때까지 알람 금지 (alarm_blocked_until은 None으로 두고, 
+                # 모니터링 서비스에서 상태 변화 감지 시 해제)
+                # 상태 변화 감지는 last_status_change를 모니터링하여 처리
+                pass
+            elif status_type == "early_leave":
+                # 조퇴: 조퇴 처리 이후 알람 금지 (다음 날 자정까지)
+                from datetime import date
+                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                alarm_blocked_until = to_naive(tomorrow)
+            elif status_type == "vacation" or status_type == "absence":
+                # 휴가/결석: 당일 알람 금지 (자정까지)
+                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                alarm_blocked_until = to_naive(tomorrow)
+                status_auto_reset_date = to_naive(tomorrow)
+            
+            update_values = {
+                "status_type": status_type,
+                "status_set_at": now_naive if status_type else None,
+                "alarm_blocked_until": alarm_blocked_until,
+                "status_auto_reset_date": status_auto_reset_date,
+                "updated_at": now_naive
+            }
+            
+            # 상태가 None이면 모든 상태 관련 필드 초기화
+            if status_type is None:
+                update_values.update({
+                    "status_type": None,
+                    "status_set_at": None,
+                    "alarm_blocked_until": None,
+                    "status_auto_reset_date": None
+                })
+            
+            result = await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .values(**update_values)
+            )
+            await session.commit()
+            return result.rowcount > 0
+    
+    @staticmethod
+    async def check_and_reset_status_by_date():
+        """
+        날짜 기반 상태 자동 해제 (휴가/결석 등)
+        매일 자정에 호출하여 status_auto_reset_date가 지난 상태를 해제
+        """
+        async with AsyncSessionLocal() as session:
+            now = utcnow()
+            now_naive = to_naive(now)
+            
+            # status_auto_reset_date가 현재 시간 이전인 학생들 조회
+            result = await session.execute(
+                select(Student)
+                .where(Student.status_auto_reset_date.isnot(None))
+                .where(Student.status_auto_reset_date <= now_naive)
+            )
+            students_to_reset = result.scalars().all()
+            
+            if students_to_reset:
+                student_ids = [s.id for s in students_to_reset]
+                await session.execute(
+                    update(Student)
+                    .where(Student.id.in_(student_ids))
+                    .values(
+                        status_type=None,
+                        status_set_at=None,
+                        alarm_blocked_until=None,
+                        status_auto_reset_date=None,
+                        updated_at=now_naive
+                    )
+                )
+                await session.commit()
+            
+            return len(students_to_reset)
+    
+    @staticmethod
+    async def is_alarm_blocked(student_id: int) -> bool:
+        """
+        학생의 알람이 현재 차단되어 있는지 확인
+        
+        Args:
+            student_id: 학생 ID
+            
+        Returns:
+            알람이 차단되어 있으면 True
+        """
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Student).where(Student.id == student_id)
+            )
+            student = result.scalar_one_or_none()
+            
+            if not student:
+                return False
+            
+            # alarm_blocked_until이 설정되어 있고 아직 지나지 않았으면 차단
+            if student.alarm_blocked_until:
+                blocked_until_utc = student.alarm_blocked_until if student.alarm_blocked_until.tzinfo else student.alarm_blocked_until.replace(tzinfo=timezone.utc)
+                if utcnow() < blocked_until_utc:
+                    return True
+            
+            # 지각/외출 상태인 경우: 상태 변화가 있었는지 확인
+            if student.status_type in ["late", "leave"]:
+                # status_set_at 이후에 last_status_change가 변경되었으면 알람 해제
+                if student.status_set_at and student.last_status_change:
+                    status_set_utc = student.status_set_at if student.status_set_at.tzinfo else student.status_set_at.replace(tzinfo=timezone.utc)
+                    last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
+                    
+                    # 상태 설정 이후 상태 변화가 없으면 알람 차단
+                    if last_change_utc <= status_set_utc:
+                        return True
+            
+            return False
 

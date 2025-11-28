@@ -304,6 +304,11 @@ class MonitorService:
             if student.is_absent:
                 continue
             
+            # 알람 차단 상태 확인
+            is_blocked = await self.db_service.is_alarm_blocked(student.id)
+            if is_blocked:
+                continue
+            
             candidate_students.append(student)
         
         if not candidate_students:
@@ -585,6 +590,9 @@ class MonitorService:
             reset_time = await self.db_service.reset_all_alert_status()
             self.reset_time = reset_time
             self.last_daily_reset_date = today_str
+            
+            # 날짜 기반 상태 자동 해제 (휴가/결석 등)
+            await self.db_service.check_and_reset_status_by_date()
             
             self.is_resetting = False
             await manager.broadcast_system_log(

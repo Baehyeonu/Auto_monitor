@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { MessageSquare, History } from 'lucide-react'
+import { MessageSquare, History, UserCog } from 'lucide-react'
 import type { Student } from '@/types/student'
 
 interface StudentActionModalProps {
@@ -9,9 +9,10 @@ interface StudentActionModalProps {
   student: Student | null
   onSelectDM: () => void
   onSelectLog: () => void
+  onSelectStatus: () => void
 }
 
-export function StudentActionModal({ open, onOpenChange, student, onSelectDM, onSelectLog }: StudentActionModalProps) {
+export function StudentActionModal({ open, onOpenChange, student, onSelectDM, onSelectLog, onSelectStatus }: StudentActionModalProps) {
   if (!student) return null
 
   const handleDMClick = () => {
@@ -22,6 +23,11 @@ export function StudentActionModal({ open, onOpenChange, student, onSelectDM, on
   const handleLogClick = () => {
     onOpenChange(false)
     onSelectLog()
+  }
+
+  const handleStatusClick = () => {
+    onOpenChange(false)
+    onSelectStatus()
   }
 
   return (
@@ -49,6 +55,14 @@ export function StudentActionModal({ open, onOpenChange, student, onSelectDM, on
           >
             <MessageSquare className="mr-2 h-4 w-4" />
             DM 발신
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-start"
+            onClick={handleStatusClick}
+          >
+            <UserCog className="mr-2 h-4 w-4" />
+            학생 상태 관리
           </Button>
         </div>
       </DialogContent>

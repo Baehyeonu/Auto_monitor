@@ -41,6 +41,12 @@ class Student(Base):
     last_leave_admin_alert = Column(DateTime, nullable=True)  # 마지막 관리자 접속 종료 알림 시간
     last_return_request_time = Column(DateTime, nullable=True)  # 마지막 복귀 요청 시간
     
+    # 학생 상태 관리 (지각, 외출, 조퇴, 휴가, 결석)
+    status_type = Column(String(20), nullable=True, index=True)  # "late", "leave", "early_leave", "vacation", "absence", None
+    status_set_at = Column(DateTime, nullable=True)  # 상태 설정 시간
+    alarm_blocked_until = Column(DateTime, nullable=True, index=True)  # 알람 금지 종료 시간
+    status_auto_reset_date = Column(DateTime, nullable=True)  # 자동 해제 날짜 (휴가/결석용)
+    
     # 생성/수정 시간
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

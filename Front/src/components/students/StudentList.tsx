@@ -8,6 +8,7 @@ import { formatKoreanTime } from '@/lib/utils'
 import { SendDMModal } from './SendDMModal'
 import { StudentActionModal } from './StudentActionModal'
 import { StudentLogModal } from './StudentLogModal'
+import { StudentStatusManagementModal } from './StudentStatusManagementModal'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Search } from 'lucide-react'
 
@@ -66,6 +67,7 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
   const [isActionModalOpen, setIsActionModalOpen] = useState(false)
   const [isDMModalOpen, setIsDMModalOpen] = useState(false)
   const [isLogModalOpen, setIsLogModalOpen] = useState(false)
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -162,6 +164,10 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
 
   const handleSelectLog = () => {
     setIsLogModalOpen(true)
+  }
+
+  const handleSelectStatus = () => {
+    setIsStatusModalOpen(true)
   }
 
   return (
@@ -293,6 +299,7 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
         student={selectedStudent}
         onSelectDM={handleSelectDM}
         onSelectLog={handleSelectLog}
+        onSelectStatus={handleSelectStatus}
       />
       <SendDMModal
         open={isDMModalOpen}
@@ -311,6 +318,16 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
           setIsLogModalOpen(false)
           setIsActionModalOpen(true)
         }}
+      />
+      <StudentStatusManagementModal
+        open={isStatusModalOpen}
+        onOpenChange={setIsStatusModalOpen}
+        student={selectedStudent}
+        onBack={() => {
+          setIsStatusModalOpen(false)
+          setIsActionModalOpen(true)
+        }}
+        onUpdated={onRefresh}
       />
     </>
   )

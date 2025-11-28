@@ -12,6 +12,7 @@ from api.schemas.student import (
     StudentUpdate,
     StudentResponse,
     AdminStatusUpdate,
+    StudentStatusUpdate,
 )
 from api.schemas.response import PaginatedResponse
 from services.admin_manager import admin_manager
@@ -236,6 +237,10 @@ async def get_students(
             "is_absent": student.is_absent,
             "absent_type": student.absent_type,
             "last_leave_time": student.last_leave_time,
+            "status_type": student.status_type,
+            "status_set_at": student.status_set_at,
+            "alarm_blocked_until": student.alarm_blocked_until,
+            "status_auto_reset_date": student.status_auto_reset_date,
             "created_at": student.created_at,
             "updated_at": student.updated_at,
             "not_joined": is_not_joined
@@ -435,5 +440,20 @@ async def send_dm_to_student(student_id: int, request: SendDMRequest):
         return {"success": True, "message": "DM sent successfully"}
     else:
         raise HTTPException(status_code=500, detail=f"Failed to send DM to {student.zep_name}. Check Discord bot logs for details.")
+
+
+@router.put("/{student_id}/status", response_model=StudentResponse)
+async def update_student_status(student_id: int, data: StudentStatusUpdate):
+    """학생 상태 설정 (지각, 외출, 조퇴, 휴가, 결석)"""
+    student = await db_service.get_student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    success = await db_service.set_student_status(student_id, data.status_type)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update student status")
+    
+    updated_student = await db_service.get_student_by_id(student_id)
+    return updated_student
 
 

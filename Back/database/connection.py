@@ -46,8 +46,25 @@ async def init_db():
         if url.drivername.startswith("sqlite"):
             result = await conn.execute(text("PRAGMA table_info(students)"))
             columns = {row[1] for row in result}
+            
+            # 기존 컬럼 추가 로직
             if "is_admin" not in columns:
                 await conn.execute(text("ALTER TABLE students ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            
+            # 학생 상태 관리 필드 추가
+            if "status_type" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_type VARCHAR(20)"))
+            if "status_set_at" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_set_at DATETIME"))
+            if "alarm_blocked_until" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN alarm_blocked_until DATETIME"))
+            if "status_auto_reset_date" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_auto_reset_date DATETIME"))
         else:
+            # PostgreSQL의 경우
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_type VARCHAR(20)"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_set_at TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS alarm_blocked_until TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_auto_reset_date TIMESTAMP"))
 
