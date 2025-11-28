@@ -33,6 +33,41 @@ function getStatusBadge(student: Student) {
     return <Badge variant="outline" className="border-yellow-500 text-yellow-600">관리자</Badge>
   }
   
+  // 상태 관리 시스템에서 설정한 상태 우선 표시
+  if (student.status_type) {
+    const statusConfig: Record<string, { label: string; className: string }> = {
+      late: {
+        label: '지각',
+        className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/50',
+      },
+      leave: {
+        label: '외출',
+        className: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/50',
+      },
+      early_leave: {
+        label: '조퇴',
+        className: 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/50',
+      },
+      vacation: {
+        label: '휴가',
+        className: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/50',
+      },
+      absence: {
+        label: '결석',
+        className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/50',
+      },
+    }
+    
+    const config = statusConfig[student.status_type]
+    if (config) {
+      return (
+        <Badge variant="outline" className={config.className}>
+          {config.label}
+        </Badge>
+      )
+    }
+  }
+  
   // 미접속 상태 (백엔드에서 계산된 값 사용)
   if (student.not_joined === true) {
     return <Badge variant="outline" className="border-gray-400 text-gray-600">미접속</Badge>
@@ -44,7 +79,7 @@ function getStatusBadge(student: Student) {
     return <Badge variant="destructive">접속 종료</Badge>
   }
   
-  // 외출/조퇴 상태
+  // 기존 외출/조퇴 상태 (하위 호환성)
   if (student.is_absent) {
     return (
       <Badge variant="destructive">
