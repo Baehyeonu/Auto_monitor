@@ -158,6 +158,19 @@ class DBService:
                 update_values["alert_count"] = 0
                 # 카메라가 ON이면 접속 종료 상태도 초기화 (재입장한 경우)
                 update_values["last_leave_time"] = None
+                
+                # 지각/외출 상태인 경우 상태 변화가 있었으므로 정상으로 복귀
+                # 먼저 현재 상태를 확인해야 하므로, 별도 쿼리로 처리
+                result = await session.execute(
+                    select(Student.status_type).where(Student.zep_name == zep_name)
+                )
+                current_status = result.scalar_one_or_none()
+                
+                if current_status in ["late", "leave"]:
+                    # 지각/외출 상태를 정상으로 변경 (상태 변화가 있었으므로)
+                    update_values["status_type"] = None
+                    update_values["status_set_at"] = None
+                    update_values["alarm_blocked_until"] = None
             
             result = await session.execute(
                 update(Student)
@@ -492,19 +505,27 @@ class DBService:
             return reset_time_utc
     
     @staticmethod
-    async def reset_camera_off_timers(reset_time: datetime):
+    async def reset_camera_off_timers(reset_time: datetime, joined_student_ids: Optional[set] = None):
         """
         점심 시간 시작/종료 시 카메라 OFF인 학생들의 시간 초기화
         
         Args:
             reset_time: 초기화할 시간 (점심 시작/종료 시간)
+            joined_student_ids: 오늘 접속한 학생 ID 집합 (None이면 모든 카메라 OFF 학생 리셋)
         """
         async with AsyncSessionLocal() as session:
+            query = update(Student).where(Student.is_cam_on == False)
+            
+            # joined_student_ids가 제공되면 해당 학생들만 리셋
+            if joined_student_ids is not None:
+                if not joined_student_ids:
+                    # 빈 집합이면 아무것도 리셋하지 않음
+                    return
+                query = query.where(Student.id.in_(joined_student_ids))
+            
             await session.execute(
-                update(Student)
-                .where(Student.is_cam_on == False)
-                .values(
-                    last_status_change=reset_time,
+                query.values(
+                    last_status_change=to_naive(reset_time),
                     updated_at=to_naive(utcnow())
                 )
             )

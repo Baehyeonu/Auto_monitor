@@ -210,7 +210,9 @@ class MonitorService:
             # 점심 시작 감지 (점심 시간에 진입했을 때)
             if is_lunch_time and self.last_lunch_check != "in_lunch":
                 lunch_start_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
-                await self.db_service.reset_camera_off_timers(lunch_start_dt)
+                # 오늘 접속한 학생들만 리셋
+                joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
+                await self.db_service.reset_camera_off_timers(lunch_start_dt, joined_student_ids=joined_today)
                 self.last_lunch_check = "in_lunch"
                 await manager.broadcast_system_log(
                     level="info",
@@ -223,7 +225,9 @@ class MonitorService:
             # current_time_obj >= lunch_end이면 점심 시간이 아님
             if current_time_obj >= lunch_end and self.last_lunch_check == "in_lunch":
                 lunch_end_dt = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
-                await self.db_service.reset_camera_off_timers(lunch_end_dt)
+                # 오늘 접속한 학생들만 리셋
+                joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
+                await self.db_service.reset_camera_off_timers(lunch_end_dt, joined_student_ids=joined_today)
                 self.last_lunch_check = "after_lunch"
                 await manager.broadcast_system_log(
                     level="info",
