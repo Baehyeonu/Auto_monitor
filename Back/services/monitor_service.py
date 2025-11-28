@@ -594,6 +594,85 @@ class MonitorService:
                 message=f"일일 초기화가 완료되었습니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
             )
     
+    def _is_not_joined(self, student, joined_today: set, now: datetime) -> bool:
+        """
+        미접속 여부 판단
+        
+        조건:
+        1. 초기화 시간 이후 상태 변화가 없으면 미접속
+        2. 퇴장 후 10시간 이상 지났으면 미접속
+        
+        Args:
+            student: Student 객체
+            joined_today: 오늘 접속한 학생 ID 집합
+            now: 현재 시간 (UTC)
+            
+        Returns:
+            미접속이면 True
+        """
+        # 관리자는 제외
+        if student.is_admin:
+            return False
+        
+        # joined_today에 포함되어 있으면 접속한 것으로 간주 (미접속 아님)
+        if student.id in joined_today:
+            return False
+        
+        # 초기화 시간 사용
+        reset_time = self.reset_time
+        if reset_time is None:
+            # reset_time이 없으면 config에서 계산
+            if self.daily_reset_time:
+                from zoneinfo import ZoneInfo
+                today = date.today()
+                seoul_tz = ZoneInfo("Asia/Seoul")
+                reset_dt_local = datetime.combine(today, self.daily_reset_time).replace(tzinfo=seoul_tz)
+                now_local = datetime.now(seoul_tz)
+                
+                # 현재 시간이 초기화 시간 이전이면 어제 초기화 시간 사용
+                if now_local < reset_dt_local:
+                    reset_dt_local = reset_dt_local - timedelta(days=1)
+                
+                reset_time = reset_dt_local.astimezone(timezone.utc)
+            else:
+                # 초기화 시간이 설정되지 않았으면 항상 접속한 것으로 간주
+                return False
+        
+        # 조건 1: 초기화 시간 이후 상태 변화가 없으면 미접속
+        if student.last_status_change:
+            status_change = student.last_status_change
+            if status_change.tzinfo is None:
+                status_change_utc = status_change.replace(tzinfo=timezone.utc)
+            else:
+                status_change_utc = status_change
+            
+            # 초기화 시간 이후에 상태 변화가 있으면 접속한 것으로 간주 (미접속 아님)
+            if status_change_utc >= reset_time:
+                return False
+            # 초기화 시간 이전이면 미접속
+            else:
+                return True
+        else:
+            # last_status_change가 없으면 미접속
+            return True
+        
+        # 조건 2: 퇴장 후 10시간 이상 지났으면 미접속
+        if student.last_leave_time:
+            leave_time = student.last_leave_time
+            if leave_time.tzinfo is None:
+                leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
+            else:
+                leave_time_utc = leave_time
+            
+            # 퇴장 후 경과 시간 계산
+            elapsed = (now - leave_time_utc).total_seconds() / 3600  # 시간 단위
+            
+            # 10시간 이상 지났으면 미접속
+            if elapsed >= 10:
+                return True
+        
+        return False
+    
     async def _get_dashboard_overview(self) -> dict:
         """대시보드 현황 데이터 수집"""
         students = await self.db_service.get_all_students()
@@ -615,24 +694,13 @@ class MonitorService:
         
         for student in non_admin_students:
             # 1. 미접속 체크 (퇴장보다 우선)
-            # - last_status_change가 어제 이전이면 미접속
-            # - 또는 last_leave_time이 어제 이전이면 미접속
-            is_not_joined = False
+            is_not_joined = self._is_not_joined(student, joined_today, now)
             
-            if student.last_status_change:
-                status_change = student.last_status_change
-                if status_change.tzinfo is None:
-                    status_change_utc = status_change.replace(tzinfo=timezone.utc)
-                else:
-                    status_change_utc = status_change
-                status_change_local = status_change_utc.astimezone(ZoneInfo("Asia/Seoul"))
-                status_date = status_change_local.date()
-                
-                # 어제 이전에 상태 변경이 있었으면 미접속
-                if status_date < today:
-                    is_not_joined = True
+            if is_not_joined:
+                not_joined += 1
+                continue
             
-            # last_leave_time이 어제 이전이면 미접속
+            # 2. 퇴장 체크 (미접속이 아닌 경우만)
             if student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
@@ -642,22 +710,10 @@ class MonitorService:
                 leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
                 leave_date = leave_time_local.date()
                 
-                if leave_date < today:
-                    # 어제 이전에 퇴장한 학생 → 미접속
-                    is_not_joined = True
-                elif leave_date == today:
-                    # 오늘 퇴장한 학생 → 퇴장 (미접속이 아닌 경우만)
-                    if not is_not_joined:
-                        left += 1
-                        continue
-            
-            # joined_today에 없고 시간 정보도 없으면 미접속
-            if not is_not_joined and student.id not in joined_today and not student.last_status_change and not student.last_leave_time:
-                is_not_joined = True
-            
-            if is_not_joined:
-                not_joined += 1
-                continue
+                # 오늘 퇴장한 학생 → 퇴장
+                if leave_date == today:
+                    left += 1
+                    continue
             
             # 접속 중인 학생 (카메라 상태)
             if student.is_cam_on:
