@@ -1,6 +1,8 @@
 """
 데이터베이스 CRUD 작업
 """
+import re
+import logging
 from typing import Optional, List
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update, delete
@@ -9,6 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import Student
 from .connection import AsyncSessionLocal
 from config import config
+
+# Levenshtein 거리 계산 라이브러리
+try:
+    from Levenshtein import distance as levenshtein_distance
+    LEVENSHTEIN_AVAILABLE = True
+except ImportError:
+    LEVENSHTEIN_AVAILABLE = False
+    logging.warning("Levenshtein 라이브러리 미설치 - 오타 허용 기능 비활성화")
+
+logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
@@ -19,6 +31,40 @@ def utcnow() -> datetime:
 def to_naive(dt: datetime) -> datetime:
     """DB 저장용 naive datetime으로 변환"""
     return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def extract_name_only(zep_name: str) -> str:
+    """ZEP 이름에서 실제 이름만 추출 (slack_listener와 동일 로직)"""
+    if not zep_name:
+        return ""
+
+    # 구분자: /_-|공백 + .()@{}[]
+    parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
+    parts = [part.strip() for part in parts if part.strip()]
+
+    role_keywords = {
+        "조교", "주강사", "멘토", "매니저",
+        "개발자", "학생", "수강생", "교육생",
+        "강사", "관리자", "운영자", "팀장",
+        "강의", "실습", "프로젝트", "팀"
+    }
+
+    korean_parts = []
+    for part in parts:
+        if any('\uAC00' <= char <= '\uD7A3' for char in part):
+            korean_parts.append(part)
+
+    filtered = [part for part in korean_parts if part not in role_keywords]
+
+    if filtered:
+        return filtered[-1]
+    elif korean_parts:
+        return korean_parts[-1]
+
+    if parts:
+        return parts[0]
+
+    return zep_name.strip()
 
 
 class DBService:
@@ -51,11 +97,11 @@ class DBService:
     @staticmethod
     async def get_student_by_zep_name(zep_name: str) -> Optional[Student]:
         """
-        ZEP 이름으로 학생 조회 (정확 일치 우선, 부분 일치 지원)
-        
+        ZEP 이름으로 학생 조회 (정확 일치 → 부분 일치 → 유사도 매칭)
+
         Args:
             zep_name: ZEP 이름
-            
+
         Returns:
             Student 객체 또는 None
         """
@@ -67,17 +113,16 @@ class DBService:
             student = result.scalar_one_or_none()
             if student:
                 return student
-            
+
             # 2. 부분 일치 시도 (한글 이름 부분이 포함된 경우)
             # 예: "IH_02_김영철" -> "김영철" 추출 -> "김영철/IH02"와 매칭
-            import re
             # 한글 이름 부분 추출
             korean_parts = []
-            parts = re.split(r'[/_\-|\s]+', zep_name.strip())
+            parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
             for part in parts:
                 if any('\uAC00' <= char <= '\uD7A3' for char in part):
                     korean_parts.append(part.strip())
-            
+
             if korean_parts:
                 # 한글 이름이 포함된 학생 찾기
                 for korean_name in korean_parts:
@@ -88,7 +133,33 @@ class DBService:
                     student = result.scalar_one_or_none()
                     if student:
                         return student
-            
+
+            # 3. Levenshtein 거리 기반 유사도 매칭 (오타 허용)
+            if LEVENSHTEIN_AVAILABLE and korean_parts:
+                # 모든 학생 조회
+                result = await session.execute(select(Student))
+                all_students = result.scalars().all()
+
+                best_match = None
+                best_distance = 999
+
+                for korean_name in korean_parts:
+                    for student in all_students:
+                        student_name = extract_name_only(student.zep_name)
+                        if not student_name:
+                            continue
+
+                        distance = levenshtein_distance(korean_name, student_name)
+
+                        # 거리 1 이하 (1글자 차이까지 허용)
+                        if distance <= 1 and distance < best_distance:
+                            best_match = student
+                            best_distance = distance
+
+                if best_match:
+                    logger.info(f"[유사 매칭] '{zep_name}' → '{best_match.zep_name}' (거리: {best_distance})")
+                    return best_match
+
             return None
     
     @staticmethod
