@@ -45,16 +45,18 @@ class ZepMonitoringSystem:
     @staticmethod
     def _ensure_utc(dt: datetime) -> datetime:
         """
-        datetime을 UTC timezone-aware로 변환
-        
+        datetime을 UTC timezone-aware로 올바르게 변환
+
         Args:
             dt: datetime 객체 (aware 또는 naive)
-            
+
         Returns:
             UTC timezone-aware datetime
         """
+        from database.db_service import to_utc
         if dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
+            # naive datetime은 서울 시간으로 가정 후 UTC 변환
+            return to_utc(dt)
         return dt
     
     async def initialize(self):

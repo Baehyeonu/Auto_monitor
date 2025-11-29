@@ -22,15 +22,37 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# 서울 타임존 (한국 시간)
+try:
+    from zoneinfo import ZoneInfo
+    SEOUL_TZ = ZoneInfo("Asia/Seoul")
+except ImportError:
+    # Python 3.8 이하 fallback
+    from datetime import timezone as tz
+    SEOUL_TZ = tz(timedelta(hours=9))
+
 
 def utcnow() -> datetime:
     """UTC 기준 timezone-aware datetime"""
     return datetime.now(timezone.utc)
 
 
+def now_seoul() -> datetime:
+    """서울 타임존 기준 현재 시간 (timezone-aware)"""
+    return datetime.now(SEOUL_TZ)
+
+
 def to_naive(dt: datetime) -> datetime:
     """DB 저장용 naive datetime으로 변환"""
     return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def to_utc(local_dt: datetime) -> datetime:
+    """로컬 시간을 UTC로 올바르게 변환"""
+    if local_dt.tzinfo is None:
+        # naive datetime은 서울 시간으로 가정
+        local_dt = local_dt.replace(tzinfo=SEOUL_TZ)
+    return local_dt.astimezone(timezone.utc)
 
 
 def extract_name_only(zep_name: str) -> str:

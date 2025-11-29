@@ -8,6 +8,7 @@ from typing import Optional
 
 from config import config
 from database import DBService
+from database.db_service import now_seoul, to_utc, SEOUL_TZ
 from utils.holiday_checker import HolidayChecker
 from api.websocket_manager import manager
 
@@ -140,13 +141,13 @@ class MonitorService:
     def _is_class_time(self) -> bool:
         """
         현재 시간이 수업 시간인지 확인
-        
+
         Returns:
             bool: 수업 시간이면 True, 아니면 False
         """
-        now = datetime.now()
+        now = now_seoul()  # 서울 시간 사용
         current_time = now.time()
-        
+
         try:
             class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
             class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
@@ -154,16 +155,17 @@ class MonitorService:
             lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
         except ValueError:
             return False
-        
+
         if current_time < class_start:
             return False
-        
+
         if current_time > class_end:
             return False
-        
-        if lunch_start <= current_time <= lunch_end:
+
+        # 점심시간: 시작 포함, 종료 미포함으로 통일
+        if lunch_start <= current_time < lunch_end:
             return False
-        
+
         return True
     
     async def _check_schedule_events(self, now: datetime):

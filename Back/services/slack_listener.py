@@ -642,9 +642,12 @@ class SlackListener:
             
             # joined_students_today 복원: DB의 last_status_change를 기준으로 오늘 접속한 학생 추가
             all_students = await self.db_service.get_all_students()
-            now_utc = datetime.now(timezone.utc)
-            today_date_utc = now_utc.date()
-            
+
+            # 서울 시간 기준 오늘 날짜
+            from database.db_service import now_seoul, SEOUL_TZ
+            now_seoul_tz = now_seoul()
+            today_date_seoul = now_seoul_tz.date()
+
             for student in all_students:
                 if student.last_status_change and not student.last_leave_time:
                     last_change = student.last_status_change
@@ -652,9 +655,10 @@ class SlackListener:
                         last_change = last_change.replace(tzinfo=timezone.utc)
                     else:
                         last_change = last_change.astimezone(timezone.utc)
-                    
-                    # UTC 기준으로 날짜 비교
-                    if last_change.date() == today_date_utc:
+
+                    # 서울 시간으로 변환 후 날짜 비교
+                    last_change_seoul = last_change.astimezone(SEOUL_TZ)
+                    if last_change_seoul.date() == today_date_seoul:
                         self.joined_students_today.add(student.id)
             
             # 동기화 완료 후 is_restoring 해제
