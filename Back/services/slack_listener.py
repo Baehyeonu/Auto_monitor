@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Tuple, List
 from datetime import datetime, timedelta, timezone
+from asyncio import Queue
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
@@ -28,10 +29,14 @@ class SlackListener:
         self.start_time = datetime.now().timestamp()
         self.is_restoring = False
         self.joined_students_today = set()
-        
+
         self.last_event_times: Dict[Tuple[int, str], float] = {}
         self.duplicate_threshold = 0.01
         self.student_cache: Dict[str, int] = {}
+
+        # 초기화 중 이벤트 큐
+        self.pending_events: Queue = Queue()
+        self.processing_pending = False
         
         self.role_keywords = {
             "조교", "주강사", "멘토", "매니저",
@@ -193,8 +198,14 @@ class SlackListener:
             # 동기화 중에는 실시간 이벤트 처리 중지 (동기화 결과를 덮어쓰지 않기 위해)
             if self.is_restoring:
                 return
-            
+
+            # 초기화 중이면 이벤트를 큐에 저장
             if self.monitor_service and self.monitor_service.is_resetting:
+                await self.pending_events.put({
+                    'text': text,
+                    'message_ts': message_ts
+                })
+                logger.debug(f"[초기화 중] 이벤트 큐잉: {text[:50]}")
                 return
             
             current_time = datetime.now().timestamp()
@@ -287,6 +298,10 @@ class SlackListener:
             if not success:
                 return
 
+            # 상태 변경 로그
+            timestamp_str = message_timestamp.strftime("%H:%M:%S") if message_timestamp else "N/A"
+            logger.info(f"[카메라 ON] {matched_name} | 시각: {timestamp_str}")
+
             if not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
@@ -337,10 +352,14 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
-            
+
             if not success:
                 return
-            
+
+            # 상태 변경 로그
+            timestamp_str = message_timestamp.strftime("%H:%M:%S") if message_timestamp else "N/A"
+            logger.info(f"[카메라 OFF] {matched_name} | 시각: {timestamp_str}")
+
             if not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
@@ -390,10 +409,15 @@ class SlackListener:
             
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
-            
+
             await self.db_service.clear_absent_status(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
-            
+
+            # 상태 변경 로그
+            if success:
+                timestamp_str = message_timestamp.strftime("%H:%M:%S") if message_timestamp else "N/A"
+                logger.info(f"[입장] {matched_name} | 시각: {timestamp_str}")
+
             if success and not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
@@ -446,10 +470,15 @@ class SlackListener:
 
             if self._is_duplicate_event(student_id, "user_leave", message_ts):
                 return
-            
+
             await self.db_service.record_user_leave(student_id)
             success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
-            
+
+            # 상태 변경 로그
+            if success:
+                timestamp_str = message_timestamp.strftime("%H:%M:%S") if message_timestamp else "N/A"
+                logger.info(f"[퇴장] {matched_name} | 시각: {timestamp_str}")
+
             if success and not self.is_restoring:
                 asyncio.create_task(self._broadcast_status_change(
                     student_id=student_id,
@@ -459,7 +488,27 @@ class SlackListener:
                 ))
         except Exception as e:
             logger.error(f"[퇴장 처리 실패] ZEP: {zep_name_raw}, 오류: {e}", exc_info=True)
-    
+
+    async def process_pending_events(self):
+        """초기화 완료 후 대기 중인 이벤트 처리"""
+        if self.processing_pending:
+            return
+
+        self.processing_pending = True
+        count = self.pending_events.qsize()
+
+        if count > 0:
+            logger.info(f"[큐 처리 시작] {count}개 이벤트 처리")
+
+        try:
+            while not self.pending_events.empty():
+                event = await self.pending_events.get()
+                await self._process_message_async(**event)
+        finally:
+            self.processing_pending = False
+            if count > 0:
+                logger.info(f"[큐 처리 완료]")
+
     async def restore_state_from_history(self, lookback_hours: int = 24):
         try:
             self.is_restoring = True

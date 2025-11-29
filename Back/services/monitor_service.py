@@ -597,8 +597,13 @@ class MonitorService:
             
             # 날짜 기반 상태 자동 해제 (휴가/결석 등)
             await self.db_service.check_and_reset_status_by_date()
-            
+
             self.is_resetting = False
+
+            # 대기 중인 이벤트 처리
+            if self.slack_listener:
+                await self.slack_listener.process_pending_events()
+
             await manager.broadcast_system_log(
                 level="success",
                 source="system",
