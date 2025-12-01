@@ -34,6 +34,11 @@ class SlackListener:
         self.duplicate_threshold = 0.01
         self.student_cache: Dict[str, int] = {}
 
+        # 폴링 메커니즘 (Socket Mode 누락 메시지 보완)
+        self.last_poll_timestamp = datetime.now().timestamp()
+        self.polling_interval = 5  # 5초마다 폴링
+        self.polling_task = None
+
         # 초기화 중 이벤트 큐
         self.pending_events: Queue = Queue()
         self.processing_pending = False
@@ -84,8 +89,9 @@ class SlackListener:
         # 분리된 부분 중 하나라도 키워드와 일치하면 무시
         for part in parts:
             if part and part in [kw.lower() for kw in self.ignore_keywords]:
+                logger.debug(f"[이름 무시] '{zep_name}' - 키워드 매칭: '{part}'")
                 return True
-        
+
         return False
     
     def _extract_name_only(self, zep_name: str) -> str:
@@ -143,10 +149,11 @@ class SlackListener:
             return False
         
         time_diff = abs(message_ts - last_time)
-        
+
         if time_diff < self.duplicate_threshold:
+            logger.debug(f"[중복 이벤트 무시] student_id={student_id}, type={event_type}, 시간차={time_diff:.3f}초")
             return True
-        
+
         self.last_event_times[key] = message_ts
         return False
     
@@ -181,20 +188,29 @@ class SlackListener:
             pass
     
     def _setup_handlers(self):
+        # 모든 메시지 처리 (일반 메시지 + bot_message)
         @self.app.event("message")
         async def handle_message(event, say):
             try:
                 text = event.get("text", "")
                 message_ts_str = event.get("ts", "")
                 message_ts = float(message_ts_str) if message_ts_str else 0
-                
+
+                # Bot 메시지인 경우 로그 출력
+                if event.get("subtype") == "bot_message":
+                    logger.debug(f"[Bot 메시지 수신] bot_id={event.get('bot_id')}, text={text[:50]}")
+                else:
+                    logger.debug(f"[일반 메시지 수신] text={text[:50]}")
+
                 asyncio.create_task(self._process_message_async(text, message_ts))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
     
     async def _process_message_async(self, text: str, message_ts: float):
         """메시지를 비동기로 처리"""
         try:
+            logger.debug(f"[메시지 수신] {text[:100]}")
+
             # 동기화 중에는 실시간 이벤트 처리 중지 (동기화 결과를 덮어쓰지 않기 위해)
             if self.is_restoring:
                 return
@@ -218,6 +234,7 @@ class SlackListener:
             match_on = self.pattern_cam_on.search(text)
             if match_on:
                 zep_name_raw = match_on.group(1)
+                logger.debug(f"[카메라 ON 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
@@ -227,6 +244,7 @@ class SlackListener:
             match_off = self.pattern_cam_off.search(text)
             if match_off:
                 zep_name_raw = match_off.group(1)
+                logger.debug(f"[카메라 OFF 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
@@ -236,22 +254,24 @@ class SlackListener:
             match_leave = self.pattern_leave.search(text)
             if match_leave:
                 zep_name_raw = match_leave.group(1)
+                logger.debug(f"[퇴장 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
                 return
-            
+
             match_join = self.pattern_join.search(text)
             if match_join:
                 zep_name_raw = match_join.group(1)
+                logger.debug(f"[입장 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[메시지 처리 오류] 텍스트: '{text[:100]}', 오류: {e}", exc_info=True)
     
     async def _handle_camera_on(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0, add_to_joined_today: bool = True):
         try:
@@ -684,10 +704,15 @@ class SlackListener:
                 self.app,
                 config.SLACK_APP_TOKEN
             )
-            
+
             await self._refresh_student_cache()
-            
+
             await self.restore_state_from_history(lookback_hours=24)
+
+            # 폴링 태스크 시작 (백그라운드)
+            self.polling_task = asyncio.create_task(self._poll_missing_messages())
+            logger.info(f"[폴링 시작] {self.polling_interval}초 간격으로 누락 메시지 체크")
+
             await self.handler.start_async()
         except Exception as e:
             raise
@@ -705,6 +730,66 @@ class SlackListener:
         except Exception as e:
             raise
     
+    async def _poll_missing_messages(self):
+        """주기적으로 Slack API를 폴링해서 Socket Mode에서 누락된 메시지 처리"""
+        while True:
+            try:
+                await asyncio.sleep(self.polling_interval)
+
+                # 마지막 폴링 이후의 메시지만 조회
+                now_ts = datetime.now().timestamp()
+
+                response = await self.app.client.conversations_history(
+                    channel=config.SLACK_CHANNEL_ID,
+                    oldest=str(self.last_poll_timestamp),
+                    limit=100
+                )
+
+                if not response.get("ok"):
+                    logger.error(f"[폴링 실패] Slack API 오류: {response.get('error')}")
+                    continue
+
+                messages = response.get("messages", [])
+
+                # 최신 메시지부터 오므로 역순으로 처리 (오래된 것부터)
+                messages.reverse()
+
+                processed_count = 0
+                for msg in messages:
+                    # bot_message만 처리
+                    if msg.get("subtype") != "bot_message":
+                        continue
+
+                    text = msg.get("text", "")
+                    message_ts = float(msg.get("ts", 0))
+
+                    # 이미 처리한 메시지는 스킵 (타임스탬프 기준)
+                    if message_ts <= self.last_poll_timestamp:
+                        continue
+
+                    # 메시지 처리
+                    logger.debug(f"[폴링으로 발견] text={text[:50]}")
+                    await self._process_message_async(text, message_ts)
+                    processed_count += 1
+
+                if processed_count > 0:
+                    logger.info(f"[폴링 완료] {processed_count}개 누락 메시지 처리")
+
+                # 타임스탬프 업데이트
+                self.last_poll_timestamp = now_ts
+
+            except Exception as e:
+                logger.error(f"[폴링 오류] {e}", exc_info=True)
+                await asyncio.sleep(5)  # 오류 발생 시 5초 대기
+
     async def stop(self):
+        # 폴링 태스크 종료
+        if self.polling_task and not self.polling_task.done():
+            self.polling_task.cancel()
+            try:
+                await self.polling_task
+            except asyncio.CancelledError:
+                pass
+
         if self.handler:
             await self.handler.close_async()
