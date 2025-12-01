@@ -15,7 +15,7 @@ export function useWebSocket({
   onMessage,
   onConnect,
   onDisconnect,
-  reconnectInterval = 3000,
+  reconnectInterval = 1000,
 }: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttemptsRef = useRef(0)
@@ -38,34 +38,6 @@ export function useWebSocket({
     }
   }, [])
 
-  const checkHealthAndConnect = useCallback(async () => {
-    // 백엔드 health check 후 연결 시도
-    try {
-      const healthUrl = (url ?? WS_URL).replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws', '/health')
-      const response = await fetch(healthUrl, { method: 'GET' })
-
-      if (response.ok) {
-        // 백엔드 준비 완료, WebSocket 연결 시도
-        connect()
-      } else {
-        // 아직 준비 안 됨, 재시도
-        scheduleReconnect()
-      }
-    } catch (error) {
-      // Health check 실패, 재시도
-      scheduleReconnect()
-    }
-  }, [url])
-
-  const scheduleReconnect = useCallback(() => {
-    reconnectAttemptsRef.current += 1
-    const backoffDelay = Math.min(
-      reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1),
-      30000
-    )
-    reconnectTimeoutRef.current = window.setTimeout(checkHealthAndConnect, backoffDelay)
-  }, [reconnectInterval, checkHealthAndConnect])
-
   const connect = useCallback(() => {
     cleanup()
     const endpoint = url ?? WS_URL
@@ -74,7 +46,12 @@ export function useWebSocket({
       wsRef.current = new WebSocket(endpoint)
     } catch (error) {
       // WebSocket 생성 실패 시 재연결 시도
-      scheduleReconnect()
+      reconnectAttemptsRef.current += 1
+      const backoffDelay = Math.min(
+        reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+        30000
+      )
+      reconnectTimeoutRef.current = window.setTimeout(connect, backoffDelay)
       return
     }
 
@@ -105,8 +82,13 @@ export function useWebSocket({
       setIsConnected(false)
       onDisconnect?.()
 
-      // health check 후 재연결 시도
-      scheduleReconnect()
+      // 재연결 시도
+      reconnectAttemptsRef.current += 1
+      const backoffDelay = Math.min(
+        reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+        30000
+      )
+      reconnectTimeoutRef.current = window.setTimeout(connect, backoffDelay)
     }
 
     wsRef.current.onerror = () => {
@@ -117,19 +99,19 @@ export function useWebSocket({
     onConnect,
     onDisconnect,
     onMessage,
-    scheduleReconnect,
+    reconnectInterval,
     url,
   ])
 
   useEffect(() => {
-    // 초기 연결 시도 (health check 사용)
-    checkHealthAndConnect()
+    // 초기 연결 시도 (즉시)
+    connect()
 
     // 페이지가 다시 보일 때 재연결 시도 (카운터 리셋)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !wsRef.current) {
         reconnectAttemptsRef.current = 0
-        checkHealthAndConnect()
+        connect()
       }
     }
 

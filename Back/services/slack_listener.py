@@ -89,7 +89,6 @@ class SlackListener:
         # 분리된 부분 중 하나라도 키워드와 일치하면 무시
         for part in parts:
             if part and part in [kw.lower() for kw in self.ignore_keywords]:
-                logger.debug(f"[이름 무시] '{zep_name}' - 키워드 매칭: '{part}'")
                 return True
 
         return False
@@ -151,7 +150,6 @@ class SlackListener:
         time_diff = abs(message_ts - last_time)
 
         if time_diff < self.duplicate_threshold:
-            logger.debug(f"[중복 이벤트 무시] student_id={student_id}, type={event_type}, 시간차={time_diff:.3f}초")
             return True
 
         self.last_event_times[key] = message_ts
@@ -196,12 +194,6 @@ class SlackListener:
                 message_ts_str = event.get("ts", "")
                 message_ts = float(message_ts_str) if message_ts_str else 0
 
-                # Bot 메시지인 경우 로그 출력
-                if event.get("subtype") == "bot_message":
-                    logger.debug(f"[Bot 메시지 수신] bot_id={event.get('bot_id')}, text={text[:50]}")
-                else:
-                    logger.debug(f"[일반 메시지 수신] text={text[:50]}")
-
                 asyncio.create_task(self._process_message_async(text, message_ts))
             except Exception as e:
                 logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
@@ -209,8 +201,6 @@ class SlackListener:
     async def _process_message_async(self, text: str, message_ts: float):
         """메시지를 비동기로 처리"""
         try:
-            logger.debug(f"[메시지 수신] {text[:100]}")
-
             # 동기화 중에는 실시간 이벤트 처리 중지 (동기화 결과를 덮어쓰지 않기 위해)
             if self.is_restoring:
                 return
@@ -221,7 +211,6 @@ class SlackListener:
                     'text': text,
                     'message_ts': message_ts
                 })
-                logger.debug(f"[초기화 중] 이벤트 큐잉: {text[:50]}")
                 return
             
             current_time = datetime.now().timestamp()
@@ -234,27 +223,24 @@ class SlackListener:
             match_on = self.pattern_cam_on.search(text)
             if match_on:
                 zep_name_raw = match_on.group(1)
-                logger.debug(f"[카메라 ON 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
                 return
-            
+
             match_off = self.pattern_cam_off.search(text)
             if match_off:
                 zep_name_raw = match_off.group(1)
-                logger.debug(f"[카메라 OFF 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
                 await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
                 return
-            
+
             match_leave = self.pattern_leave.search(text)
             if match_leave:
                 zep_name_raw = match_leave.group(1)
-                logger.debug(f"[퇴장 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
@@ -264,7 +250,6 @@ class SlackListener:
             match_join = self.pattern_join.search(text)
             if match_join:
                 zep_name_raw = match_join.group(1)
-                logger.debug(f"[입장 매칭] 추출된 이름: '{zep_name_raw}'")
                 if self._should_ignore_name(zep_name_raw):
                     return
                 zep_name = self._extract_name_only(zep_name_raw)
