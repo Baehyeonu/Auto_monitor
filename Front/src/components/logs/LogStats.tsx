@@ -64,12 +64,12 @@ export function LogStats({ stats }: LogStatsProps) {
           {stats?.user_leave ?? 0}
         </p>
       </div>
-        <div 
+        <div
           className="glass-panel rounded-lg border border-border/60 p-4 cursor-pointer hover:bg-muted/20 transition-colors"
-          onClick={() => handleCardClick('not_joined', '미접속')}
-          title="미접속 학생 목록 보기"
+          onClick={() => handleCardClick('not_joined', '특이사항')}
+          title="특이사항 학생 목록 보기"
         >
-        <p className="text-sm text-muted-foreground">미접속</p>
+        <p className="text-sm text-muted-foreground">특이사항</p>
         <p className="text-2xl font-semibold text-gray-500">
           {stats?.not_joined ?? 0}
         </p>

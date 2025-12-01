@@ -337,8 +337,9 @@ class MonitorService:
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
             
             if student.alert_count == 0:
+                # 첫 번째 알림: 수강생에게만
                 success = await self.discord_bot.send_camera_alert(student)
-                
+
                 if success:
                     await manager.broadcast_new_alert(
                         alert_id=0,
@@ -357,21 +358,23 @@ class MonitorService:
                         student_id=student.id
                     )
             else:
+                # 두 번째 알림부터: 수강생과 관리자 둘 다
+                await self.discord_bot.send_camera_alert(student)
                 await self.discord_bot.send_camera_alert_to_admin(student)
-                
+
                 await manager.broadcast_new_alert(
                     alert_id=0,
                     student_id=student.id,
                     zep_name=student.zep_name,
                     alert_type='camera_off_admin',
-                    alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (관리자 알림)'
+                    alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (수강생+관리자 알림)'
                 )
-                # 관리자 알림 로그
+                # 수강생 + 관리자 알림 로그
                 await manager.broadcast_system_log(
                     level="warning",
                     source="discord",
                     event_type="dm_sent",
-                    message=f"관리자 알림: {student.zep_name}님 카메라 OFF ({elapsed_minutes}분 경과)",
+                    message=f"DM 전송: {student.zep_name}님에게 카메라 OFF 알림 + 관리자 알림 ({elapsed_minutes}분 경과)",
                     student_name=student.zep_name,
                     student_id=student.id
                 )
@@ -615,82 +618,36 @@ class MonitorService:
     
     def _is_not_joined(self, student, joined_today: set, now: datetime) -> bool:
         """
-        미접속 여부 판단
-        
+        특이사항(미접속) 여부 판단
+
         조건:
-        1. 초기화 시간 이후 상태 변화가 없으면 미접속
-        2. 퇴장 후 10시간 이상 지났으면 미접속
-        
+        1. 휴가, 결석 상태인 학생은 특이사항으로 분류
+        2. 외출, 조퇴는 퇴장(left)으로 분류
+        3. 초기화 후 실제 입장 이벤트가 없었던 학생은 특이사항
+
         Args:
             student: Student 객체
             joined_today: 오늘 접속한 학생 ID 집합
             now: 현재 시간 (UTC)
-            
+
         Returns:
-            미접속이면 True
+            특이사항이면 True
         """
         # 관리자는 제외
         if student.is_admin:
             return False
-        
-        # joined_today에 포함되어 있으면 접속한 것으로 간주 (미접속 아님)
+
+        # 휴가, 결석만 특이사항으로 처리 (외출, 조퇴는 퇴장으로 처리)
+        if student.status_type in ['vacation', 'absence']:
+            return True
+
+        # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
         if student.id in joined_today:
             return False
-        
-        # 초기화 시간 사용
-        reset_time = self.reset_time
-        if reset_time is None:
-            # reset_time이 없으면 config에서 계산
-            if self.daily_reset_time:
-                from zoneinfo import ZoneInfo
-                today = date.today()
-                seoul_tz = ZoneInfo("Asia/Seoul")
-                reset_dt_local = datetime.combine(today, self.daily_reset_time).replace(tzinfo=seoul_tz)
-                now_local = datetime.now(seoul_tz)
-                
-                # 현재 시간이 초기화 시간 이전이면 어제 초기화 시간 사용
-                if now_local < reset_dt_local:
-                    reset_dt_local = reset_dt_local - timedelta(days=1)
-                
-                reset_time = reset_dt_local.astimezone(timezone.utc)
-            else:
-                # 초기화 시간이 설정되지 않았으면 항상 접속한 것으로 간주
-                return False
-        
-        # 조건 1: 초기화 시간 이후 상태 변화가 없으면 미접속
-        if student.last_status_change:
-            status_change = student.last_status_change
-            if status_change.tzinfo is None:
-                status_change_utc = status_change.replace(tzinfo=timezone.utc)
-            else:
-                status_change_utc = status_change
-            
-            # 초기화 시간 이후에 상태 변화가 있으면 접속한 것으로 간주 (미접속 아님)
-            if status_change_utc >= reset_time:
-                return False
-            # 초기화 시간 이전이면 미접속
-            else:
-                return True
-        else:
-            # last_status_change가 없으면 미접속
-            return True
-        
-        # 조건 2: 퇴장 후 10시간 이상 지났으면 미접속
-        if student.last_leave_time:
-            leave_time = student.last_leave_time
-            if leave_time.tzinfo is None:
-                leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
-            else:
-                leave_time_utc = leave_time
-            
-            # 퇴장 후 경과 시간 계산
-            elapsed = (now - leave_time_utc).total_seconds() / 3600  # 시간 단위
-            
-            # 10시간 이상 지났으면 미접속
-            if elapsed >= 10:
-                return True
-        
-        return False
+
+        # joined_today에 없으면 특이사항
+        # joined_today는 슬랙 동기화 시 실제로 오늘 입장 이벤트가 있었던 학생들만 포함됨
+        return True
     
     async def _get_dashboard_overview(self) -> dict:
         """대시보드 현황 데이터 수집"""
@@ -712,14 +669,14 @@ class MonitorService:
         from zoneinfo import ZoneInfo
         
         for student in non_admin_students:
-            # 1. 미접속 체크 (퇴장보다 우선)
+            # 1. 특이사항 체크 (퇴장보다 우선 - 휴가, 결석)
             is_not_joined = self._is_not_joined(student, joined_today, now)
-            
+
             if is_not_joined:
                 not_joined += 1
                 continue
-            
-            # 2. 퇴장 체크 (미접속이 아닌 경우만)
+
+            # 2. 퇴장 체크 (특이사항이 아닌 경우만 - 외출, 조퇴 포함)
             if student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
