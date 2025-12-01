@@ -337,8 +337,9 @@ class MonitorService:
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
             
             if student.alert_count == 0:
+                # 첫 번째 알림: 수강생에게만
                 success = await self.discord_bot.send_camera_alert(student)
-                
+
                 if success:
                     await manager.broadcast_new_alert(
                         alert_id=0,
@@ -357,21 +358,23 @@ class MonitorService:
                         student_id=student.id
                     )
             else:
+                # 두 번째 알림부터: 수강생과 관리자 둘 다
+                await self.discord_bot.send_camera_alert(student)
                 await self.discord_bot.send_camera_alert_to_admin(student)
-                
+
                 await manager.broadcast_new_alert(
                     alert_id=0,
                     student_id=student.id,
                     zep_name=student.zep_name,
                     alert_type='camera_off_admin',
-                    alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (관리자 알림)'
+                    alert_message=f'{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다. (수강생+관리자 알림)'
                 )
-                # 관리자 알림 로그
+                # 수강생 + 관리자 알림 로그
                 await manager.broadcast_system_log(
                     level="warning",
                     source="discord",
                     event_type="dm_sent",
-                    message=f"관리자 알림: {student.zep_name}님 카메라 OFF ({elapsed_minutes}분 경과)",
+                    message=f"DM 전송: {student.zep_name}님에게 카메라 OFF 알림 + 관리자 알림 ({elapsed_minutes}분 경과)",
                     student_name=student.zep_name,
                     student_id=student.id
                 )

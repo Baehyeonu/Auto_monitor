@@ -973,11 +973,41 @@ class DBService:
             await session.commit()
     
     @staticmethod
+    async def reset_alert_fields_partial():
+        """
+        백엔드 재시작 또는 동기화 시 응답 관련 필드만 초기화
+        (쿨다운 타이머는 유지하여 중복 알림 방지)
+
+        초기화 항목:
+        - response_status: NULL (학생 응답 상태)
+        - response_time: NULL (응답 시간)
+        - last_return_request_time: NULL (복귀 요청 시간)
+
+        유지 항목:
+        - last_alert_sent (쿨다운 타이머)
+        - alert_count (알림 횟수)
+        - last_absent_alert (외출/조퇴 알림 쿨다운)
+        - last_leave_admin_alert (접속 종료 알림 쿨다운)
+        - 카메라 상태 (is_cam_on)
+        - 접속 상태 (last_leave_time, is_absent)
+        """
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(Student)
+                .values(
+                    response_status=None,
+                    response_time=None,
+                    last_return_request_time=None,
+                    updated_at=to_naive(utcnow())
+                )
+            )
+            await session.commit()
+
+    @staticmethod
     async def reset_all_alert_fields():
         """
-        모든 학생의 알림 관련 필드 초기화
-        (프로그램 재시작 시 히스토리 복원 후 호출)
-        
+        일일 초기화 시 모든 알림 관련 필드 초기화
+
         초기화 항목:
         - last_alert_sent: NULL
         - alert_count: 0
@@ -986,7 +1016,7 @@ class DBService:
         - last_absent_alert: NULL
         - last_leave_admin_alert: NULL
         - last_return_request_time: NULL
-        
+
         유지 항목:
         - 카메라 상태 (is_cam_on)
         - 접속 상태 (last_leave_time, is_absent)
