@@ -103,7 +103,14 @@ export const useLogStore = create<LogState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.filteredLogs = filterLogs(state.logs, state.filter)
+          // 1시간 이상 된 로그 제거
+          const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+          const recentLogs = state.logs.filter(log => {
+            const logTime = new Date(log.timestamp)
+            return logTime > oneHourAgo
+          })
+          state.logs = recentLogs
+          state.filteredLogs = filterLogs(recentLogs, state.filter)
         }
       },
       merge: (persistedState, currentState) => {
