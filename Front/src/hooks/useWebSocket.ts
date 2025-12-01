@@ -8,7 +8,6 @@ interface UseWebSocketOptions {
   onConnect?: () => void
   onDisconnect?: () => void
   reconnectInterval?: number
-  maxReconnectAttempts?: number
 }
 
 export function useWebSocket({
@@ -17,7 +16,6 @@ export function useWebSocket({
   onConnect,
   onDisconnect,
   reconnectInterval = 3000,
-  maxReconnectAttempts = 10,
 }: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttemptsRef = useRef(0)
@@ -40,13 +38,43 @@ export function useWebSocket({
     }
   }, [])
 
+  const checkHealthAndConnect = useCallback(async () => {
+    // 백엔드 health check 후 연결 시도
+    try {
+      const healthUrl = (url ?? WS_URL).replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws', '/health')
+      const response = await fetch(healthUrl, { method: 'GET' })
+
+      if (response.ok) {
+        // 백엔드 준비 완료, WebSocket 연결 시도
+        connect()
+      } else {
+        // 아직 준비 안 됨, 재시도
+        scheduleReconnect()
+      }
+    } catch (error) {
+      // Health check 실패, 재시도
+      scheduleReconnect()
+    }
+  }, [url])
+
+  const scheduleReconnect = useCallback(() => {
+    reconnectAttemptsRef.current += 1
+    const backoffDelay = Math.min(
+      reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+      30000
+    )
+    reconnectTimeoutRef.current = window.setTimeout(checkHealthAndConnect, backoffDelay)
+  }, [reconnectInterval, checkHealthAndConnect])
+
   const connect = useCallback(() => {
     cleanup()
     const endpoint = url ?? WS_URL
-    
+
     try {
       wsRef.current = new WebSocket(endpoint)
     } catch (error) {
+      // WebSocket 생성 실패 시 재연결 시도
+      scheduleReconnect()
       return
     }
 
@@ -76,13 +104,9 @@ export function useWebSocket({
     wsRef.current.onclose = () => {
       setIsConnected(false)
       onDisconnect?.()
-      if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-        reconnectAttemptsRef.current += 1
-        reconnectTimeoutRef.current = window.setTimeout(
-          connect,
-          reconnectInterval,
-        )
-      }
+
+      // health check 후 재연결 시도
+      scheduleReconnect()
     }
 
     wsRef.current.onerror = () => {
@@ -90,20 +114,33 @@ export function useWebSocket({
     }
   }, [
     cleanup,
-    maxReconnectAttempts,
     onConnect,
     onDisconnect,
     onMessage,
-    reconnectInterval,
+    scheduleReconnect,
     url,
   ])
 
   useEffect(() => {
-    connect()
+    // 초기 연결 시도 (health check 사용)
+    checkHealthAndConnect()
+
+    // 페이지가 다시 보일 때 재연결 시도 (카운터 리셋)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !wsRef.current) {
+        reconnectAttemptsRef.current = 0
+        checkHealthAndConnect()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       cleanup()
     }
-  }, [cleanup, connect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     isConnected,

@@ -657,9 +657,10 @@ class SlackListener:
                         await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=False)
                     processed_count += 1
                     continue
-            
-            await self.db_service.reset_all_alert_fields()
-            
+
+            # 백엔드 재시작/동기화 시: 응답 관련 필드만 초기화 (쿨다운 타이머는 유지)
+            await self.db_service.reset_alert_fields_partial()
+
             # joined_students_today 복원: DB의 last_status_change를 기준으로 오늘 접속한 학생 추가
             all_students = await self.db_service.get_all_students()
 
