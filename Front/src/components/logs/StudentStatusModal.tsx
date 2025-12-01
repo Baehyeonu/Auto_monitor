@@ -18,18 +18,31 @@ function getStatusBadge(student: Student) {
   if (student.is_admin) {
     return <Badge variant="outline" className="border-yellow-500 text-yellow-600">관리자</Badge>
   }
-  
-  // 미접속 상태 (백엔드에서 계산된 값 사용)
-  if (student.not_joined === true) {
-    return <Badge variant="outline" className="border-gray-400 text-gray-600">미접속</Badge>
+
+  // 상태 관리(status_type)가 있으면 우선 표시
+  if (student.status_type) {
+    const statusLabels = {
+      late: '지각',
+      leave: '외출',
+      early_leave: '조퇴',
+      vacation: '휴가',
+      absence: '결석'
+    }
+    const label = statusLabels[student.status_type] || student.status_type
+    return <Badge variant="outline" className="border-purple-500 text-purple-600">{label}</Badge>
   }
-  
+
+  // 특이사항 상태 (백엔드에서 계산된 값 사용)
+  if (student.not_joined === true) {
+    return <Badge variant="outline" className="border-gray-400 text-gray-600">특이사항</Badge>
+  }
+
   // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용)
   // last_leave_time이 있고 not_joined가 false이거나 undefined면 오늘 퇴장한 학생
   if (student.last_leave_time && (student.not_joined === false || student.not_joined === undefined)) {
     return <Badge variant="destructive">접속 종료</Badge>
   }
-  
+
   if (student.is_absent) {
     return (
       <Badge variant="destructive">
@@ -37,7 +50,7 @@ function getStatusBadge(student: Student) {
       </Badge>
     )
   }
-  
+
   if (student.is_cam_on) {
     return <Badge variant="default" className="bg-green-600">카메라 ON</Badge>
   } else {

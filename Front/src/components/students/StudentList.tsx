@@ -68,9 +68,9 @@ function getStatusBadge(student: Student) {
     }
   }
   
-  // 미접속 상태 (백엔드에서 계산된 값 사용)
+  // 특이사항 상태 (백엔드에서 계산된 값 사용)
   if (student.not_joined === true) {
-    return <Badge variant="outline" className="border-gray-400 text-gray-600">미접속</Badge>
+    return <Badge variant="outline" className="border-gray-400 text-gray-600">특이사항</Badge>
   }
   
   // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용)
@@ -88,7 +88,7 @@ function getStatusBadge(student: Student) {
     )
   }
   
-  // 카메라 상태 (미접속자가 아닌 경우만)
+  // 카메라 상태 (특이사항이 아닌 경우만)
   if (student.is_cam_on) {
     return <Badge variant="default" className="bg-green-600">카메라 ON</Badge>
   } else {
@@ -152,10 +152,18 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
   }
   
   const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && searchTerm.trim().length > 0) {
+    if (e.key === 'Enter') {
       setShowSuggestions(false)
       if (onSearch) {
-        onSearch(searchTerm)
+        // 빈칸이면 1페이지로 이동 및 검색 초기화
+        if (searchTerm.trim().length === 0) {
+          onSearch('')
+          if (pagination) {
+            pagination.onPageChange(1)
+          }
+        } else {
+          onSearch(searchTerm)
+        }
       }
     }
   }
