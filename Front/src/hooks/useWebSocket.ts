@@ -76,13 +76,18 @@ export function useWebSocket({
     wsRef.current.onclose = () => {
       setIsConnected(false)
       onDisconnect?.()
-      if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-        reconnectAttemptsRef.current += 1
-        reconnectTimeoutRef.current = window.setTimeout(
-          connect,
-          reconnectInterval,
-        )
-      }
+
+      // 무한 재연결 시도 (지수 백오프)
+      reconnectAttemptsRef.current += 1
+      const backoffDelay = Math.min(
+        reconnectInterval * Math.pow(1.5, reconnectAttemptsRef.current - 1),
+        30000 // 최대 30초
+      )
+
+      reconnectTimeoutRef.current = window.setTimeout(
+        connect,
+        backoffDelay,
+      )
     }
 
     wsRef.current.onerror = () => {
@@ -100,10 +105,23 @@ export function useWebSocket({
 
   useEffect(() => {
     connect()
+
+    // 페이지가 다시 보일 때 재연결 시도 (카운터 리셋)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !wsRef.current) {
+        reconnectAttemptsRef.current = 0
+        connect()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       cleanup()
     }
-  }, [cleanup, connect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     isConnected,
