@@ -57,7 +57,7 @@ function getStatusBadge(student: Student) {
         className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/50',
       },
     }
-    
+
     const config = statusConfig[student.status_type]
     if (config) {
       return (
@@ -67,16 +67,16 @@ function getStatusBadge(student: Student) {
       )
     }
   }
-  
+
+  // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용) - 특이사항보다 우선
+  // last_leave_time이 있고 not_joined가 false면 오늘 퇴장한 학생
+  if (student.last_leave_time && student.not_joined === false) {
+    return <Badge variant="destructive">퇴장</Badge>
+  }
+
   // 특이사항 상태 (백엔드에서 계산된 값 사용)
   if (student.not_joined === true) {
     return <Badge variant="outline" className="border-gray-400 text-gray-600">특이사항</Badge>
-  }
-  
-  // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용)
-  // last_leave_time이 있고 not_joined가 false이거나 undefined면 오늘 퇴장한 학생
-  if (student.last_leave_time && (student.not_joined === false || student.not_joined === undefined)) {
-    return <Badge variant="destructive">접속 종료</Badge>
   }
   
   // 기존 외출/조퇴 상태 (하위 호환성)

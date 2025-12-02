@@ -106,13 +106,16 @@ async def get_overview():
     from zoneinfo import ZoneInfo
     
     for student in non_admin_students:
+        # 상태(status_type)가 있는 사람은 특이사항에만 포함 (카메라, 퇴장에서 제외)
+        has_status = student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
+
         # 1. 특이사항 체크
         is_not_joined = _is_not_joined(student, joined_today, now, reset_time)
         if is_not_joined:
             not_joined += 1
 
-        # 2. 퇴장 체크 (특이사항과 중복 가능)
-        if student.last_leave_time:
+        # 2. 퇴장 체크 (상태가 있는 사람 제외)
+        if not has_status and student.last_leave_time:
             leave_time = student.last_leave_time
             if leave_time.tzinfo is None:
                 leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
@@ -125,9 +128,8 @@ async def get_overview():
             if leave_date == today:
                 left += 1
 
-        # 3. 카메라 상태 체크 (입장한 사람만)
-        # 입장한 사람 = joined_today에 있는 사람
-        if student.id in joined_today:
+        # 3. 카메라 상태 체크 (입장한 사람 중 상태가 없고 퇴장하지 않은 사람만)
+        if not has_status and student.id in joined_today and not student.last_leave_time:
             if student.is_cam_on:
                 camera_on += 1
             else:
@@ -169,6 +171,12 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
                 last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((now - last_change_utc).total_seconds() / 60)
         
+        # 상태가 있는 사람은 특이사항에만 포함
+        has_status = student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
+
+        # not_joined 값 계산
+        is_not_joined = _is_not_joined(student, joined_today, now, reset_time)
+
         status_data = {
             "id": student.id,
             "zep_name": student.zep_name,
@@ -180,24 +188,24 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
             "last_leave_time": student.last_leave_time.isoformat() if student.last_leave_time else None,
             "elapsed_minutes": elapsed_minutes,
             "is_threshold_exceeded": elapsed_minutes >= config.CAMERA_OFF_THRESHOLD,
-            "alert_count": student.alert_count
+            "alert_count": student.alert_count,
+            "not_joined": is_not_joined
         }
-        
+
         if filter == "all":
             result.append(status_data)
-        elif filter == "camera_on" and student.is_cam_on and student.id in joined_today:
-            # 카메라 ON: 입장한 사람 중 카메라 켠 학생만
+        elif filter == "camera_on" and not has_status and student.is_cam_on and student.id in joined_today and not student.last_leave_time:
+            # 카메라 ON: 입장한 사람 중 상태가 없고 카메라 켠 학생만 (퇴장하지 않은 학생)
             result.append(status_data)
-        elif filter == "camera_off" and not student.is_cam_on and student.id in joined_today:
-            # 카메라 OFF: 입장한 사람 중 카메라 꺼진 학생만
+        elif filter == "camera_off" and not has_status and not student.is_cam_on and student.id in joined_today and not student.last_leave_time:
+            # 카메라 OFF: 입장한 사람 중 상태가 없고 카메라 꺼진 학생만 (퇴장하지 않은 학생)
             result.append(status_data)
         elif filter == "left":
-            # 오늘 날짜에 퇴장한 학생만 (로컬 시간 기준)
-            # 특이사항과 중복 가능
+            # 오늘 날짜에 퇴장한 학생만 (로컬 시간 기준, 상태가 없는 사람만)
             today = date.today()
             from zoneinfo import ZoneInfo
 
-            if student.last_leave_time:
+            if not has_status and student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
                     leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
@@ -208,10 +216,12 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
 
                 # 오늘 퇴장한 학생
                 if leave_date == today:
+                    # 퇴장 학생은 not_joined를 false로 설정
+                    status_data["not_joined"] = False
                     result.append(status_data)
         elif filter == "not_joined":
             # 미접속: 초기화 시간 이후 상태 변화 없거나, 퇴장 후 10시간 이상
-            if _is_not_joined(student, joined_today, now, reset_time):
+            if is_not_joined:
                 result.append(status_data)
     
     return {"students": result}

@@ -122,18 +122,18 @@ async def get_students(
     
     if status:
         if status == "camera_on":
-            # 카메라 ON: 입장한 사람 중 카메라 켠 학생만
-            filtered_students = [s for s in filtered_students if s.is_cam_on and s.id in joined_today]
+            # 카메라 ON: 입장한 사람 중 상태가 없고 카메라 켠 학생만 (퇴장하지 않은 학생)
+            filtered_students = [s for s in filtered_students if not (s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']) and s.is_cam_on and s.id in joined_today and not s.last_leave_time]
         elif status == "camera_off":
-            # 카메라 OFF: 입장한 사람 중 카메라 꺼진 학생만
-            filtered_students = [s for s in filtered_students if not s.is_cam_on and s.id in joined_today]
+            # 카메라 OFF: 입장한 사람 중 상태가 없고 카메라 꺼진 학생만 (퇴장하지 않은 학생)
+            filtered_students = [s for s in filtered_students if not (s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']) and not s.is_cam_on and s.id in joined_today and not s.last_leave_time]
         elif status == "left":
-            # 오늘 날짜에 퇴장한 학생만 필터링 (로컬 시간 기준)
-            # 특이사항과 중복 가능
+            # 오늘 날짜에 퇴장한 학생만 필터링 (로컬 시간 기준, 상태가 없는 사람만)
             today = date.today()
             result = []
             for s in filtered_students:
-                if s.last_leave_time:
+                has_status = s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
+                if not has_status and s.last_leave_time:
                     leave_time = s.last_leave_time
                     # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
                     if leave_time.tzinfo is None:
@@ -171,7 +171,11 @@ async def get_students(
     for student in paginated:
         # 미접속자 판단: 초기화 시간 이후 상태 변화 없거나, 퇴장 후 10시간 이상
         is_not_joined = _is_not_joined(student, joined_today, now, reset_time)
-        
+
+        # status 필터가 left인 경우, 퇴장한 학생이므로 not_joined는 false로 설정
+        if status == "left":
+            is_not_joined = False
+
         student_dict = {
             "id": student.id,
             "zep_name": student.zep_name,

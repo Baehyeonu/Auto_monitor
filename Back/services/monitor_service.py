@@ -669,13 +669,16 @@ class MonitorService:
         from zoneinfo import ZoneInfo
         
         for student in non_admin_students:
+            # 상태(status_type)가 있는 사람은 특이사항에만 포함 (카메라, 퇴장에서 제외)
+            has_status = student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
+
             # 1. 특이사항 체크
             is_not_joined = self._is_not_joined(student, joined_today, now)
             if is_not_joined:
                 not_joined += 1
 
-            # 2. 퇴장 체크 (특이사항과 중복 가능)
-            if student.last_leave_time:
+            # 2. 퇴장 체크 (상태가 있는 사람 제외)
+            if not has_status and student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
                     leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
@@ -688,9 +691,8 @@ class MonitorService:
                 if leave_date == today:
                     left += 1
 
-            # 3. 카메라 상태 체크 (입장한 사람만)
-            # 입장한 사람 = joined_today에 있는 사람
-            if student.id in joined_today:
+            # 3. 카메라 상태 체크 (입장한 사람 중 상태가 없고 퇴장하지 않은 사람만)
+            if not has_status and student.id in joined_today and not student.last_leave_time:
                 if student.is_cam_on:
                     camera_on += 1
                 else:

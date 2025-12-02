@@ -655,7 +655,9 @@ class SlackListener:
             today_date_seoul = now_seoul_tz.date()
 
             for student in all_students:
-                if student.last_status_change and not student.last_leave_time:
+                # 오늘 상태 변경이 있는 학생은 모두 joined_students_today에 추가
+                # (퇴장한 학생도 오늘 입장했던 학생이므로 포함)
+                if student.last_status_change:
                     last_change = student.last_status_change
                     if last_change.tzinfo is None:
                         last_change = last_change.replace(tzinfo=timezone.utc)

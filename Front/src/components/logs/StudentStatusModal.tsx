@@ -32,15 +32,15 @@ function getStatusBadge(student: Student) {
     return <Badge variant="outline" className="border-purple-500 text-purple-600">{label}</Badge>
   }
 
+  // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용) - 특이사항보다 우선
+  // last_leave_time이 있고 not_joined가 false면 오늘 퇴장한 학생
+  if (student.last_leave_time && student.not_joined === false) {
+    return <Badge variant="destructive">퇴장</Badge>
+  }
+
   // 특이사항 상태 (백엔드에서 계산된 값 사용)
   if (student.not_joined === true) {
     return <Badge variant="outline" className="border-gray-400 text-gray-600">특이사항</Badge>
-  }
-
-  // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용)
-  // last_leave_time이 있고 not_joined가 false이거나 undefined면 오늘 퇴장한 학생
-  if (student.last_leave_time && (student.not_joined === false || student.not_joined === undefined)) {
-    return <Badge variant="destructive">접속 종료</Badge>
   }
 
   if (student.is_absent) {
