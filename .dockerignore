@@ -6,57 +6,42 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
 venv/
+env/
 ENV/
 .venv
-*.db
-*.sqlite
-*.sqlite3
-students.db
 
 # Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 
-# 환경변수
+# Database (exclude from image)
+*.db
+*.sqlite
+*.sqlite3
+students.db
+
+# Environment (use .env.example instead)
 .env
 .env.local
-.env.*.local
 
-# 빌드 결과물
+# Build outputs
 dist/
 build/
 *.log
 
-# IDE
+# IDE & OS
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# 문서
+# Documentation (not needed in image)
 *.md
-CHANGELOG.md
-GUIDE.md
-README.md
-RAILPACK_SETUP.md
 
-# Docker
+# Docker files (not needed in image)
 docker-compose.yml
 Dockerfile*
 .dockerignore
-
-# 기타
-*.tmp
-.cache/
 
