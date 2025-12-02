@@ -63,47 +63,23 @@ LogItem.displayName = 'LogItem'
 export function LogViewer() {
   const filteredLogs = useLogStore((state) => state.filteredLogs)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const isAutoScrollingRef = useRef(true)
 
   const sortedLogs = [...filteredLogs].sort((a, b) => {
     return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   })
 
-  // 사용자가 수동으로 스크롤하면 자동 스크롤 비활성화
-  const handleScroll = () => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    
-    const isAtBottom = 
-      container.scrollHeight - container.scrollTop - container.clientHeight < 50
-    isAutoScrollingRef.current = isAtBottom
-  }
-
-  // 새로운 로그가 추가되거나 필터가 변경되면 자동 스크롤
-  useEffect(() => {
-    const container = scrollContainerRef.current
-    if (container && sortedLogs.length > 0 && isAutoScrollingRef.current) {
-      // 다음 프레임에서 스크롤 (DOM 업데이트 후)
-      requestAnimationFrame(() => {
-        if (container && isAutoScrollingRef.current) {
-          container.scrollTop = container.scrollHeight
-        }
-      })
-    }
-  }, [sortedLogs.length, sortedLogs[sortedLogs.length - 1]?.id])
-
-  // 컴포넌트 마운트 시 자동 스크롤
+  // 로그가 변경되면 항상 맨 아래로 자동 스크롤
   useEffect(() => {
     const container = scrollContainerRef.current
     if (container && sortedLogs.length > 0) {
+      // 다음 프레임에서 스크롤 (DOM 업데이트 후)
       requestAnimationFrame(() => {
         if (container) {
           container.scrollTop = container.scrollHeight
-          isAutoScrollingRef.current = true
         }
       })
     }
-  }, [])
+  }, [sortedLogs.length, filteredLogs])
 
   if (sortedLogs.length === 0) {
     return (
@@ -118,7 +94,6 @@ export function LogViewer() {
     <div className="glass-panel rounded-lg border border-border/60">
       <div
         ref={scrollContainerRef}
-        onScroll={handleScroll}
         className="max-h-[600px] overflow-y-auto p-4"
       >
         <div className="space-y-2">
