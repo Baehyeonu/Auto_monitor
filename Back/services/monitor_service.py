@@ -297,24 +297,28 @@ class MonitorService:
         for student in students:
             if not student.discord_id:
                 continue
-            
+
             if self.discord_bot.is_admin(student.discord_id):
                 continue
-            
+
             if student.id not in joined_today:
                 continue
-            
+
             if student.last_leave_time is not None:
                 continue
-            
+
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+                continue
+
             if student.is_absent:
                 continue
-            
+
             # 알람 차단 상태 확인
             is_blocked = await self.db_service.is_alarm_blocked(student.id)
             if is_blocked:
                 continue
-            
+
             candidate_students.append(student)
         
         if not candidate_students:
@@ -396,17 +400,21 @@ class MonitorService:
         
         non_absent_candidates = []
         absent_candidates = []
-        
+
         for student in students:
             if student.discord_id and self.discord_bot.is_admin(student.discord_id):
                 continue
-            
+
             if student.id not in joined_today:
                 continue
-            
+
             if self.is_dm_paused:
                 continue
-            
+
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+                continue
+
             if not student.is_absent:
                 non_absent_candidates.append(student)
             else:
@@ -485,20 +493,24 @@ class MonitorService:
         students = await self.db_service.get_students_with_return_request(
             self.return_reminder_time
         )
-        
+
         if not students:
             return
-        
+
         for student in students:
             if not student.discord_id:
                 continue
-            
+
             if self.discord_bot.is_admin(student.discord_id):
                 continue
-            
+
             if self.is_dm_paused:
                 continue
-            
+
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+                continue
+
             success = await self.discord_bot.send_return_reminder(student)
             
             if success:
