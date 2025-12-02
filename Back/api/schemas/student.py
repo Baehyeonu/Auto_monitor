@@ -80,7 +80,8 @@ class AdminStatusUpdate(BaseModel):
 
 class StudentStatusUpdate(BaseModel):
     status_type: Optional[str] = None  # "late", "leave", "early_leave", "vacation", "absence", None (정상)
-    
+    status_time: Optional[str] = None  # 선택사항: 상태 변경 시간 "HH:MM" 형식
+
     @field_validator('status_type')
     @classmethod
     def validate_status_type(cls, v):
@@ -91,3 +92,16 @@ class StudentStatusUpdate(BaseModel):
         if v not in valid_types:
             raise ValueError(f"status_type must be one of {valid_types} or None")
         return v
+
+    @field_validator('status_time')
+    @classmethod
+    def validate_status_time(cls, v):
+        """상태 시간 검증 (HH:MM 형식)"""
+        if v is None:
+            return None
+        from datetime import datetime
+        try:
+            datetime.strptime(v, "%H:%M")
+            return v
+        except ValueError:
+            raise ValueError("status_time must be in HH:MM format")

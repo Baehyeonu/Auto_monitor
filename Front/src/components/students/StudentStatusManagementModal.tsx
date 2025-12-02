@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { updateStudentStatus } from '@/services/studentService'
 import type { Student } from '@/types/student'
 import { Clock, DoorOpen, LogOut, Calendar, XCircle, CheckCircle2 } from 'lucide-react'
@@ -76,19 +76,20 @@ export function StudentStatusManagementModal({
   onUpdated,
 }: StudentStatusManagementModalProps) {
   const [selectedStatus, setSelectedStatus] = useState<StatusType>(student?.status_type || null)
+  const [statusTime, setStatusTime] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (!student) return null
 
   const handleStatusChange = async () => {
-    if (selectedStatus === student.status_type) {
+    if (selectedStatus === student.status_type && !statusTime) {
       onOpenChange(false)
       return
     }
 
     setIsSubmitting(true)
     try {
-      await updateStudentStatus(student.id, selectedStatus)
+      await updateStudentStatus(student.id, selectedStatus, statusTime || undefined)
       await onUpdated?.()
       onOpenChange(false)
     } catch (error) {
@@ -181,6 +182,29 @@ export function StudentStatusManagementModal({
               })}
             </div>
           </div>
+
+          {/* 시간 입력 (외출/조퇴인 경우에만 표시) */}
+          {(selectedStatus === 'leave' || selectedStatus === 'early_leave') && (
+            <div className="rounded-lg border p-4 bg-muted/30">
+              <label htmlFor="status-time" className="text-sm font-medium mb-2 block">
+                상태 변경 시간 (선택사항)
+              </label>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <input
+                  id="status-time"
+                  type="time"
+                  value={statusTime}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStatusTime(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  placeholder="HH:MM"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                입력하지 않으면 현재 시간으로 설정됩니다.
+              </p>
+            </div>
+          )}
 
           {/* 하단 버튼 */}
           <div className="flex items-center justify-between pt-4 border-t">

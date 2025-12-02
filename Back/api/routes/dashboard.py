@@ -71,8 +71,8 @@ def _is_not_joined(student, joined_today: set, now: datetime, reset_time: Option
     if student.is_admin:
         return False
 
-    # 휴가, 결석만 특이사항으로 처리 (외출, 조퇴는 퇴장으로 처리)
-    if student.status_type in ['vacation', 'absence']:
+    # 외출, 조퇴, 휴가, 결석, 지각 등 status_type이 있으면 무조건 특이사항
+    if student.status_type in ['leave', 'early_leave', 'vacation', 'absence', 'late']:
         return True
 
     # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
@@ -106,14 +106,12 @@ async def get_overview():
     from zoneinfo import ZoneInfo
     
     for student in non_admin_students:
-        # 1. 특이사항 체크 (퇴장보다 우선 - 휴가, 결석)
+        # 1. 특이사항 체크
         is_not_joined = _is_not_joined(student, joined_today, now, reset_time)
-
         if is_not_joined:
             not_joined += 1
-            continue
 
-        # 2. 퇴장 체크 (특이사항이 아닌 경우만 - 외출, 조퇴 포함)
+        # 2. 퇴장 체크 (특이사항과 중복 가능)
         if student.last_leave_time:
             leave_time = student.last_leave_time
             if leave_time.tzinfo is None:
@@ -122,24 +120,25 @@ async def get_overview():
                 leave_time_utc = leave_time
             leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
             leave_date = leave_time_local.date()
-            
-            # 오늘 퇴장한 학생 → 퇴장
+
+            # 오늘 퇴장한 학생
             if leave_date == today:
                 left += 1
-                continue
-        
-        # 접속 중인 학생 (카메라 상태)
-        if student.is_cam_on:
-            camera_on += 1
-        else:
-            camera_off += 1
-            if student.last_status_change:
-                last_change_utc = student.last_status_change
-                if last_change_utc.tzinfo is None:
-                    last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
-                elapsed = (now - last_change_utc).total_seconds() / 60
-                if elapsed >= threshold_minutes:
-                    threshold_exceeded += 1
+
+        # 3. 카메라 상태 체크 (입장한 사람만)
+        # 입장한 사람 = joined_today에 있는 사람
+        if student.id in joined_today:
+            if student.is_cam_on:
+                camera_on += 1
+            else:
+                camera_off += 1
+                if student.last_status_change:
+                    last_change_utc = student.last_status_change
+                    if last_change_utc.tzinfo is None:
+                        last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
+                    elapsed = (now - last_change_utc).total_seconds() / 60
+                    if elapsed >= threshold_minutes:
+                        threshold_exceeded += 1
     
     return {
         "total_students": len(non_admin_students),
@@ -186,21 +185,19 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
         
         if filter == "all":
             result.append(status_data)
-        elif filter == "camera_on" and student.is_cam_on and not student.last_leave_time:
+        elif filter == "camera_on" and student.is_cam_on and student.id in joined_today:
+            # 카메라 ON: 입장한 사람 중 카메라 켠 학생만
             result.append(status_data)
-        elif filter == "camera_off" and not student.is_cam_on and not student.last_leave_time and student.id in joined_today:
-            # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (미접속자 제외)
+        elif filter == "camera_off" and not student.is_cam_on and student.id in joined_today:
+            # 카메라 OFF: 입장한 사람 중 카메라 꺼진 학생만
             result.append(status_data)
         elif filter == "left":
             # 오늘 날짜에 퇴장한 학생만 (로컬 시간 기준)
-            # 단, 미접속 조건에 해당하지 않는 경우만
+            # 특이사항과 중복 가능
             today = date.today()
             from zoneinfo import ZoneInfo
-            
-            # 미접속 체크 (퇴장보다 우선)
-            is_not_joined = _is_not_joined(student, joined_today, now)
-            
-            if student.last_leave_time and not is_not_joined:
+
+            if student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
                     leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
@@ -208,8 +205,8 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
                     leave_time_utc = leave_time
                 leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
                 leave_date = leave_time_local.date()
-                
-                # 오늘 퇴장한 학생이면서 미접속이 아닌 경우만 퇴장으로 표시
+
+                # 오늘 퇴장한 학생
                 if leave_date == today:
                     result.append(status_data)
         elif filter == "not_joined":

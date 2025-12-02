@@ -637,8 +637,8 @@ class MonitorService:
         if student.is_admin:
             return False
 
-        # 휴가, 결석만 특이사항으로 처리 (외출, 조퇴는 퇴장으로 처리)
-        if student.status_type in ['vacation', 'absence']:
+        # 외출, 조퇴, 휴가, 결석, 지각 등 status_type이 있으면 무조건 특이사항
+        if student.status_type in ['leave', 'early_leave', 'vacation', 'absence', 'late']:
             return True
 
         # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
@@ -669,14 +669,12 @@ class MonitorService:
         from zoneinfo import ZoneInfo
         
         for student in non_admin_students:
-            # 1. 특이사항 체크 (퇴장보다 우선 - 휴가, 결석)
+            # 1. 특이사항 체크
             is_not_joined = self._is_not_joined(student, joined_today, now)
-
             if is_not_joined:
                 not_joined += 1
-                continue
 
-            # 2. 퇴장 체크 (특이사항이 아닌 경우만 - 외출, 조퇴 포함)
+            # 2. 퇴장 체크 (특이사항과 중복 가능)
             if student.last_leave_time:
                 leave_time = student.last_leave_time
                 if leave_time.tzinfo is None:
@@ -685,24 +683,25 @@ class MonitorService:
                     leave_time_utc = leave_time
                 leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
                 leave_date = leave_time_local.date()
-                
-                # 오늘 퇴장한 학생 → 퇴장
+
+                # 오늘 퇴장한 학생
                 if leave_date == today:
                     left += 1
-                    continue
-            
-            # 접속 중인 학생 (카메라 상태)
-            if student.is_cam_on:
-                camera_on += 1
-            else:
-                camera_off += 1
-                if student.last_status_change:
-                    last_change_utc = student.last_status_change
-                    if last_change_utc.tzinfo is None:
-                        last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
-                    elapsed = (now - last_change_utc).total_seconds() / 60
-                    if elapsed >= threshold_minutes:
-                        threshold_exceeded += 1
+
+            # 3. 카메라 상태 체크 (입장한 사람만)
+            # 입장한 사람 = joined_today에 있는 사람
+            if student.id in joined_today:
+                if student.is_cam_on:
+                    camera_on += 1
+                else:
+                    camera_off += 1
+                    if student.last_status_change:
+                        last_change_utc = student.last_status_change
+                        if last_change_utc.tzinfo is None:
+                            last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
+                        elapsed = (now - last_change_utc).total_seconds() / 60
+                        if elapsed >= threshold_minutes:
+                            threshold_exceeded += 1
         
         return {
             "total_students": len(non_admin_students),

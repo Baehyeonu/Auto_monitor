@@ -85,8 +85,8 @@ def _is_not_joined(student, joined_today: set, now: datetime, reset_time: Option
     if student.is_admin:
         return False
 
-    # 휴가, 결석만 특이사항으로 처리 (외출, 조퇴는 퇴장으로 처리)
-    if student.status_type in ['vacation', 'absence']:
+    # 외출, 조퇴, 휴가, 결석, 지각 등 status_type이 있으면 무조건 특이사항
+    if student.status_type in ['leave', 'early_leave', 'vacation', 'absence', 'late']:
         return True
 
     # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
@@ -122,30 +122,18 @@ async def get_students(
     
     if status:
         if status == "camera_on":
-            filtered_students = [s for s in filtered_students if s.is_cam_on and not s.last_leave_time]
+            # 카메라 ON: 입장한 사람 중 카메라 켠 학생만
+            filtered_students = [s for s in filtered_students if s.is_cam_on and s.id in joined_today]
         elif status == "camera_off":
-            # 카메라 OFF: 접속했지만 카메라가 꺼진 학생만 (특이사항 제외)
-            now = datetime.now(timezone.utc)
-            result = []
-            for s in filtered_students:
-                # 특이사항 여부 확인 (카메라 OFF 필터에서 특이사항 제외)
-                is_not_joined_flag = _is_not_joined(s, joined_today, now, reset_time)
-
-                # 카메라 OFF이고, 퇴장하지 않았으며, 특이사항이 아닌 경우만 포함
-                if not s.is_cam_on and not s.last_leave_time and not is_not_joined_flag:
-                    result.append(s)
-            filtered_students = result
+            # 카메라 OFF: 입장한 사람 중 카메라 꺼진 학생만
+            filtered_students = [s for s in filtered_students if not s.is_cam_on and s.id in joined_today]
         elif status == "left":
             # 오늘 날짜에 퇴장한 학생만 필터링 (로컬 시간 기준)
-            # 단, 특이사항 조건에 해당하지 않는 경우만 (외출, 조퇴 포함)
+            # 특이사항과 중복 가능
             today = date.today()
-            now = datetime.now(timezone.utc)
             result = []
             for s in filtered_students:
-                # 특이사항 체크 (퇴장보다 우선 - 휴가, 결석만 해당)
-                is_not_joined = _is_not_joined(s, joined_today, now, reset_time)
-
-                if s.last_leave_time and not is_not_joined:
+                if s.last_leave_time:
                     leave_time = s.last_leave_time
                     # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
                     if leave_time.tzinfo is None:
@@ -157,7 +145,7 @@ async def get_students(
                     leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
                     leave_date = leave_time_local.date()
 
-                    # 오늘 퇴장한 학생이면서 특이사항이 아닌 경우만 퇴장으로 표시 (외출, 조퇴 포함)
+                    # 오늘 퇴장한 학생
                     if leave_date == today:
                         result.append(s)
             filtered_students = result
@@ -409,7 +397,7 @@ async def update_student_status(student_id: int, data: StudentStatusUpdate):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    success = await db_service.set_student_status(student_id, data.status_type)
+    success = await db_service.set_student_status(student_id, data.status_type, data.status_time)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update student status")
     

@@ -72,11 +72,15 @@ export async function deleteAllStudents() {
 
 export async function updateStudentStatus(
   id: number,
-  statusType: 'late' | 'leave' | 'early_leave' | 'vacation' | 'absence' | null
+  statusType: 'late' | 'leave' | 'early_leave' | 'vacation' | 'absence' | null,
+  statusTime?: string
 ) {
   return apiRequest<Student>(`${API_ROUTES.students}/${id}/status`, {
     method: 'PUT',
-    body: JSON.stringify({ status_type: statusType }),
+    body: JSON.stringify({
+      status_type: statusType,
+      status_time: statusTime
+    }),
   })
 }
 
