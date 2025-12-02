@@ -696,30 +696,27 @@ class DiscordBot(commands.Bot):
     
     async def _notify_instructor(self, student, action: str):
         """
-        강사 채널에 알림 전송
-        
+        관리자들에게 학생 응답 알림 DM 전송
+
         Args:
             student: Student 객체
             action: 응답 유형
         """
-        if not config.INSTRUCTOR_CHANNEL_ID:
-            return
-        
         try:
-            channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
-            
-            if not channel:
+            # 관리자 목록 가져오기
+            admin_ids = admin_manager.get_ids()
+            if not admin_ids:
                 return
-            
+
             action_text = "🚶 잠시 자리 비움"
             action_emoji = "🚶"
-            
+
             embed = discord.Embed(
                 title=f"{action_emoji} 학생 응답 알림",
                 description=f"**{student.zep_name}** 학생이 응답했습니다.",
                 color=discord.Color.blue()
             )
-            
+
             embed.add_field(name="응답 내용", value=action_text, inline=True)
             embed.add_field(name="카메라 상태", value="🔴 OFF", inline=True)
             embed.add_field(
@@ -727,112 +724,133 @@ class DiscordBot(commands.Bot):
                 value="10분 후",
                 inline=True
             )
-            
-            await channel.send(embed=embed)
-            
+
+            # 각 관리자에게 개별 DM 전송
+            for admin_id in admin_ids:
+                try:
+                    user = await self.fetch_user(admin_id)
+                    if user:
+                        await user.send(embed=embed)
+                except Exception:
+                    continue
+
         except Exception:
             pass
     
     async def send_camera_alert_to_admin(self, student):
         """
-        관리자에게 카메라 OFF 알림 전송 (재알림 시)
-        
+        관리자들에게 카메라 OFF 알림 DM 전송 (재알림 시)
+
         Args:
             student: Student 객체
         """
-        if not config.INSTRUCTOR_CHANNEL_ID:
-            return
-        
         try:
-            channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
-            if not channel:
+            # 관리자 목록 가져오기
+            admin_ids = admin_manager.get_ids()
+            if not admin_ids:
                 return
-            
+
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
-            
+
             embed = discord.Embed(
                 title="⚠️ 카메라 OFF 확인 요청",
                 description=f"{student.zep_name}님의 카메라가 {elapsed_minutes}분째 꺼져 있습니다.",
                 color=discord.Color.red()
             )
-            
+
             embed.add_field(
                 name="👤 학생",
                 value=f"{student.zep_name}",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="⏱️ 카메라 OFF",
                 value=f"{elapsed_minutes}분",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="📷 상태",
                 value="카메라 OFF 🔴",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="💡 안내",
                 value="학생에게 이미 1회 알림이 전송되었습니다.\n아래 버튼으로 외출/조퇴 여부를 확인하거나 학생에게 직접 확인하세요.",
                 inline=False
             )
-            
-            view = AdminLeaveView(student.id)
-            await channel.send(embed=embed, view=view)
-            
+
+            # 각 관리자에게 개별 DM 전송 (각 메시지마다 새 View 생성 필요)
+            for admin_id in admin_ids:
+                try:
+                    user = await self.fetch_user(admin_id)
+                    if user:
+                        # 각 메시지마다 새로운 View 인스턴스 생성
+                        view = AdminLeaveView(student.id)
+                        await user.send(embed=embed, view=view)
+                except Exception:
+                    # 특정 관리자에게 DM 실패해도 다른 관리자에게는 계속 시도
+                    continue
+
         except Exception:
             pass
     
     async def send_leave_alert_to_admin(self, student):
         """
-        관리자에게 접속 종료 알림 전송 (외출/조퇴 확인 요청)
-        
+        관리자들에게 접속 종료 알림 DM 전송 (외출/조퇴 확인 요청)
+
         Args:
             student: Student 객체
         """
-        if not config.INSTRUCTOR_CHANNEL_ID:
-            return
-        
         try:
-            channel = self.get_channel(int(config.INSTRUCTOR_CHANNEL_ID))
-            if not channel:
+            # 관리자 목록 가져오기
+            admin_ids = admin_manager.get_ids()
+            if not admin_ids:
                 return
-            
+
             # 경과 시간 계산
             last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
-            
+
             embed = discord.Embed(
                 title="⚠️ 접속 종료 확인 요청",
                 description=f"{student.zep_name}님이 접속을 종료한 지 {elapsed_minutes}분이 지났습니다.",
                 color=discord.Color.orange()
             )
-            
+
             embed.add_field(
                 name="👤 학생",
                 value=f"{student.zep_name}",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="⏱️ 경과 시간",
                 value=f"{elapsed_minutes}분",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="💡 안내",
                 value="아래 버튼으로 외출/조퇴 여부를 확인해주세요.\n확인하지 않으면 학생에게 DM이 전송됩니다.",
                 inline=False
             )
-            
-            view = AdminLeaveView(student.id)
-            await channel.send(embed=embed, view=view)
-            
+
+            # 각 관리자에게 개별 DM 전송 (각 메시지마다 새 View 생성 필요)
+            for admin_id in admin_ids:
+                try:
+                    user = await self.fetch_user(admin_id)
+                    if user:
+                        # 각 메시지마다 새로운 View 인스턴스 생성
+                        view = AdminLeaveView(student.id)
+                        await user.send(embed=embed, view=view)
+                except Exception:
+                    # 특정 관리자에게 DM 실패해도 다른 관리자에게는 계속 시도
+                    continue
+
         except Exception:
             pass
     
@@ -1256,27 +1274,11 @@ class AlertView(discord.ui.View):
 
 class AdminLeaveView(discord.ui.View):
     """관리자 접속 종료 알림용 인터랙티브 버튼"""
-    
+
     def __init__(self, student_id: int):
         super().__init__(timeout=None)
-        
-        leave_button = discord.ui.Button(
-            label="외출",
-            style=discord.ButtonStyle.primary,
-            custom_id=f"admin_leave_{student_id}",
-            emoji="🚪"
-        )
-        self.add_item(leave_button)
-        
-        # 버튼 2: 조퇴
-        early_leave_button = discord.ui.Button(
-            label="조퇴",
-            style=discord.ButtonStyle.danger,
-            custom_id=f"admin_early_leave_{student_id}",
-            emoji="🏃"
-        )
-        self.add_item(early_leave_button)
-        
+
+        # 수강생 확인 버튼만 표시
         check_button = discord.ui.Button(
             label="수강생 확인",
             style=discord.ButtonStyle.success,
