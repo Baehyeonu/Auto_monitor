@@ -294,6 +294,19 @@ class MonitorService:
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
         
         candidate_students = []
+
+        # 수업 시작 시간 계산 (수업 시작 전 입장한 학생은 수업 시작 시간부터 카운트)
+        class_start_time_utc = None
+        try:
+            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+            from database.db_service import now_seoul, SEOUL_TZ
+            today_seoul = now_seoul().date()
+            class_start_dt = datetime.combine(today_seoul, class_start)
+            class_start_dt_seoul = SEOUL_TZ.localize(class_start_dt)
+            class_start_time_utc = class_start_dt_seoul.astimezone(timezone.utc)
+        except:
+            pass
+
         for student in students:
             if not student.discord_id:
                 continue
@@ -318,6 +331,17 @@ class MonitorService:
             is_blocked = await self.db_service.is_alarm_blocked(student.id)
             if is_blocked:
                 continue
+
+            # 수업 시작 전에 입장한 학생은 수업 시작 시간부터 카운트
+            if class_start_time_utc:
+                last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
+                # 학생이 수업 시작 전에 입장했고, 현재 시간이 수업 시작 이후라면
+                if last_change_utc < class_start_time_utc and datetime.now(timezone.utc) >= class_start_time_utc:
+                    # 수업 시작 시간부터 경과 시간 계산
+                    elapsed_from_class_start = int((datetime.now(timezone.utc) - class_start_time_utc).total_seconds() / 60)
+                    # 임계값을 넘지 않았으면 제외
+                    if elapsed_from_class_start < self.camera_off_threshold:
+                        continue
 
             candidate_students.append(student)
         
