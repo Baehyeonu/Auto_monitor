@@ -610,28 +610,43 @@ class DBService:
     @staticmethod
     async def reset_camera_off_timers(reset_time: datetime, joined_student_ids: Optional[set] = None):
         """
-        점심 시간 시작/종료 시 카메라 OFF인 학생들의 시간 초기화
-        
+        점심 시간 시작/종료 시 카메라 OFF인 학생들과 퇴장한 학생들의 시간 초기화
+
         Args:
             reset_time: 초기화할 시간 (점심 시작/종료 시간)
             joined_student_ids: 오늘 접속한 학생 ID 집합 (None이면 모든 카메라 OFF 학생 리셋)
         """
         async with AsyncSessionLocal() as session:
-            query = update(Student).where(Student.is_cam_on == False)
-            
+            # 카메라 OFF 학생들의 last_status_change 리셋
+            camera_query = update(Student).where(Student.is_cam_on == False)
+
             # joined_student_ids가 제공되면 해당 학생들만 리셋
             if joined_student_ids is not None:
                 if not joined_student_ids:
                     # 빈 집합이면 아무것도 리셋하지 않음
                     return
-                query = query.where(Student.id.in_(joined_student_ids))
-            
+                camera_query = camera_query.where(Student.id.in_(joined_student_ids))
+
             await session.execute(
-                query.values(
+                camera_query.values(
                     last_status_change=to_naive(reset_time),
                     updated_at=to_naive(utcnow())
                 )
             )
+
+            # 퇴장한 학생들의 last_leave_time 리셋 (점심 시간 중 퇴장한 경우 대응)
+            leave_query = update(Student).where(Student.last_leave_time.isnot(None))
+
+            if joined_student_ids is not None:
+                leave_query = leave_query.where(Student.id.in_(joined_student_ids))
+
+            await session.execute(
+                leave_query.values(
+                    last_leave_time=to_naive(reset_time),
+                    updated_at=to_naive(utcnow())
+                )
+            )
+
             await session.commit()
     
     @staticmethod
