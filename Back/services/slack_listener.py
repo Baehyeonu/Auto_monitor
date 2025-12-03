@@ -670,35 +670,19 @@ class SlackListener:
             today_date_seoul = now_seoul_tz.date()
 
             for student in all_students:
-                # 오늘 입장했거나 상태 변경이 있는 학생은 모두 joined_students_today에 추가
-                should_add = False
-
-                # 1. last_entry_time 체크 (입장 시간)
-                if student.last_entry_time:
-                    last_entry = student.last_entry_time
-                    if last_entry.tzinfo is None:
-                        last_entry = last_entry.replace(tzinfo=timezone.utc)
-                    else:
-                        last_entry = last_entry.astimezone(timezone.utc)
-
-                    last_entry_seoul = last_entry.astimezone(SEOUL_TZ)
-                    if last_entry_seoul.date() == today_date_seoul:
-                        should_add = True
-
-                # 2. last_status_change 체크 (카메라 상태 변경)
-                if not should_add and student.last_status_change:
+                # 오늘 상태 변경이 있는 학생은 모두 joined_students_today에 추가
+                # (퇴장한 학생도 오늘 입장했던 학생이므로 포함)
+                if student.last_status_change:
                     last_change = student.last_status_change
                     if last_change.tzinfo is None:
                         last_change = last_change.replace(tzinfo=timezone.utc)
                     else:
                         last_change = last_change.astimezone(timezone.utc)
 
+                    # 서울 시간으로 변환 후 날짜 비교
                     last_change_seoul = last_change.astimezone(SEOUL_TZ)
                     if last_change_seoul.date() == today_date_seoul:
-                        should_add = True
-
-                if should_add:
-                    self.joined_students_today.add(student.id)
+                        self.joined_students_today.add(student.id)
             
             # 동기화 완료 후 is_restoring 해제
             self.is_restoring = False
