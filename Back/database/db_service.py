@@ -96,11 +96,11 @@ class DBService:
     async def add_student(zep_name: str, discord_id: int) -> Student:
         """
         새 학생 추가
-        
+
         Args:
             zep_name: ZEP에서 사용하는 이름
             discord_id: Discord 유저 ID
-            
+
         Returns:
             생성된 Student 객체
         """
@@ -108,6 +108,29 @@ class DBService:
             student = Student(
                 zep_name=zep_name,
                 discord_id=discord_id,
+                is_cam_on=False,
+                last_status_change=to_naive(utcnow())
+            )
+            session.add(student)
+            await session.commit()
+            await session.refresh(student)
+            return student
+
+    @staticmethod
+    async def add_student_without_discord(zep_name: str) -> Student:
+        """
+        Discord ID 없이 학생 추가 (CSV 일괄 등록용)
+
+        Args:
+            zep_name: ZEP에서 사용하는 이름
+
+        Returns:
+            생성된 Student 객체
+        """
+        async with AsyncSessionLocal() as session:
+            student = Student(
+                zep_name=zep_name,
+                discord_id=None,
                 is_cam_on=False,
                 last_status_change=to_naive(utcnow())
             )
@@ -280,23 +303,25 @@ class DBService:
         Args:
             threshold_minutes: 임계값 (분)
             reset_time: 초기화 시간 (None이면 모든 학생 체크)
-            
+
         Returns:
             Student 리스트
         """
         async with AsyncSessionLocal() as session:
             threshold_time = to_naive(utcnow() - timedelta(minutes=threshold_minutes))
-            
+
             query = select(Student).where(
                 Student.is_cam_on == False,
                 Student.last_status_change <= threshold_time,
                 Student.last_leave_time.is_(None),
                 Student.discord_id.isnot(None)
             )
-            
+
             if reset_time is not None:
-                query = query.where(Student.last_status_change > reset_time)
-            
+                # reset_time을 naive datetime으로 변환하여 비교
+                reset_time_naive = to_naive(reset_time)
+                query = query.where(Student.last_status_change > reset_time_naive)
+
             result = await session.execute(query)
             return result.scalars().all()
     

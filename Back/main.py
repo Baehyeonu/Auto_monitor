@@ -73,7 +73,22 @@ class ZepMonitoringSystem:
         except Exception as e:
             print(f"❌ 데이터베이스 초기화 실패: {e}")
             raise
-        
+
+        # CSV 파일로 학생 일괄 등록 (있으면)
+        try:
+            from utils.csv_loader import load_students_from_csv
+            added, skipped, errors = await load_students_from_csv("students.csv")
+
+            if added > 0 or skipped > 0:
+                print(f"📋 CSV 학생 등록: 신규 {added}명, 기존 {skipped}명 스킵")
+                if errors:
+                    print(f"⚠️ CSV 등록 경고: {len(errors)}건")
+                    for error in errors[:5]:  # 최대 5개만 출력
+                        print(f"   - {error}")
+        except Exception as e:
+            # CSV 파일 없거나 오류 발생해도 계속 진행
+            pass
+
         print("🤖 Discord Bot 초기화 중...")
         try:
             self.discord_bot = DiscordBot()

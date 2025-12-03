@@ -60,6 +60,27 @@ npm run dev
 
 ## 📚 사용 방법
 
+### 학생 일괄 등록 (CSV)
+
+프로젝트 루트에 `students.csv` 파일을 두면 프로그램 시작 시 자동으로 등록됩니다.
+
+```bash
+# students.csv.example을 복사하여 사용
+cp students.csv.example students.csv
+nano students.csv  # 학생 정보 입력
+```
+
+**CSV 형식:**
+```csv
+zep_name,discord_id
+홍길동,123456789012345678
+김철수,234567890123456789
+이영희,
+```
+
+- Discord ID가 없으면 비워두고 나중에 웹 대시보드에서 추가 가능
+- 이미 등록된 학생은 자동으로 스킵
+
 ### 웹 대시보드
 
 - **대시보드**: 실시간 학생 현황 (카메라 ON/OFF/퇴장/특이사항)

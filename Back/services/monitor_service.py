@@ -245,30 +245,27 @@ class MonitorService:
         now = datetime.now()
         current_time = now.strftime("%H:%M")
         current_time_obj = now.time()
-        
-        # 함수 진입 확인용 로그 (매번 출력하면 너무 많으니 간헐적으로)
-        # 실제로는 조건 체크 로그로 대체
-        
+
         await self._check_daily_reset(now)
-        
+
         # 수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관)
         await self._check_schedule_events(now)
-        
+
         # 모니터링 활성화 체크
         if not self.is_monitoring_active():
             return
-        
+
         # 워밍업 시간 체크
         if self.start_time:
             elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
                 return
-        
+
         # 수업 시간 체크
         is_class_time = self._is_class_time()
         if not is_class_time:
             return
-        
+
         # 점심 시간인지 확인 (시간 객체로 비교)
         try:
             lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
@@ -287,12 +284,12 @@ class MonitorService:
             self.camera_off_threshold,
             self.reset_time
         )
-        
+
         if not students:
             return
-        
+
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
-        
+
         candidate_students = []
 
         # 수업 시작 시간 계산 (수업 시작 전 입장한 학생은 수업 시작 시간부터 카운트)
@@ -344,26 +341,26 @@ class MonitorService:
                         continue
 
             candidate_students.append(student)
-        
+
         if not candidate_students:
             return
-        
+
         student_ids = [s.id for s in candidate_students]
         alert_status = await self.db_service.should_send_alert_batch(student_ids, self.alert_cooldown)
-        
+
         students_to_alert = [s for s in candidate_students if alert_status.get(s.id, False)]
-        
+
         if not students_to_alert:
             return
         
         for student in students_to_alert:
-            
+
             if self.is_dm_paused:
                 continue
-            
+
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
-            
+
             if student.alert_count == 0:
                 # 첫 번째 알림: 수강생에게만
                 success = await self.discord_bot.send_camera_alert(student)
