@@ -41,6 +41,7 @@ docker-compose up -d
 ### 3. 로컬 개발 환경
 
 **백엔드:**
+
 ```bash
 cd Back
 python3 -m venv venv
@@ -50,6 +51,7 @@ python main.py
 ```
 
 **프론트엔드:**
+
 ```bash
 cd Front
 npm install
@@ -58,34 +60,12 @@ npm run dev
 
 ## 📚 사용 방법
 
-### Discord 명령어
-
-| 명령어 | 설명 | 권한 |
-|--------|------|------|
-| `!register [ZEP이름]` | 학생 등록 | 모든 사용자 |
-| `!status` | 내 상태 확인 | 모든 사용자 |
-| `!admin_register [ZEP이름] @유저` | 다른 사용자 등록 | 관리자 |
-| `!list_students` | 학생 목록 조회 | 관리자 |
-| `!help` | 도움말 | 모든 사용자 |
-
 ### 웹 대시보드
 
 - **대시보드**: 실시간 학생 현황 (카메라 ON/OFF/퇴장/특이사항)
 - **학생 관리**: 등록, 수정, 삭제, 상태 설정, 관리자 지정
 - **로그**: 실시간 모니터링 로그 (WebSocket 자동 재연결)
 - **설정**: 모니터링 임계값, 수업 시간, Slack 동기화, DM 제어
-
-### 터미널 단축키
-
-| 단축키 | 설명 |
-|--------|------|
-| `Enter` 또는 `s` | 전체 학생 상태 요약 |
-| `o` | 카메라 OFF 학생 상세 |
-| `l` | 접속 종료 학생 상세 |
-| `n` | 오늘 미접속 학생 상세 |
-| `p` | DM 일시정지 |
-| `r` | DM 재개 |
-| `q` | 프로그램 종료 |
 
 ## 🛠️ 기술 스택
 
@@ -98,11 +78,13 @@ npm run dev
 필수 설정은 `.env` 파일에서 관리하고, 나머지는 웹 대시보드에서 설정합니다.
 
 **`.env` 파일 (필수):**
+
 - `DISCORD_BOT_TOKEN`: Discord Bot 토큰
 - `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_CHANNEL_ID`: Slack 연동 정보
 - `DATABASE_URL`: 데이터베이스 경로
 
 **웹 대시보드에서 설정:**
+
 - 관리자 계정
 - 모니터링 임계값 (카메라 OFF, 퇴장 알림 시간)
 - 수업 시간 (시작/종료/점심/초기화 시간)
@@ -125,25 +107,3 @@ Auto_monitor/
 ├── docker-compose.yml
 └── .env.example
 ```
-
-## 📖 상세 문서
-
-자세한 내용은 [Back/GUIDE.md](./Back/GUIDE.md)를 참조하세요:
-- Discord/Slack Bot 생성 방법
-- 환경 변수 상세 설정
-- 화면 모니터링 활성화
-- 트러블슈팅
-
-## 🔐 보안 주의
-
-- `.env` 파일을 Git에 커밋하지 마세요
-- Bot 토큰을 공개하지 마세요
-- 프로덕션에서는 HTTPS를 사용하세요
-
-## 📄 라이선스
-
-MIT License
-
----
-
-**Made with ❤️ for Better Online Education**

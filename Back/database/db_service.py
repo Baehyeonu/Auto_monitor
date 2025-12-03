@@ -507,12 +507,12 @@ class DBService:
     @staticmethod
     async def reset_all_alert_status():
         """
-        프로그램 시작 시 모든 학생의 알림 관련 상태 초기화
+        프로그램 시작 시 또는 일일 초기화 시 모든 학생의 알림 관련 상태 초기화
         이전 실행의 데이터로 인한 오알림 방지
         (학생 등록 정보는 유지)
-        
-        카메라 상태와 실제 이벤트 시간은 유지하고, 알림/응답/외출 관련 필드만 리셋합니다.
-        
+
+        카메라 상태와 실제 이벤트 시간은 유지하고, 알림/응답/외출/상태 관련 필드만 리셋합니다.
+
         Returns:
             초기화 시간 (datetime)
         """
@@ -521,7 +521,7 @@ class DBService:
             await session.execute(
                 update(Student)
                 .values(
-                    # 알림 관련 필드만 리셋
+                    # 알림 관련 필드 리셋
                     last_alert_sent=None,
                     alert_count=0,
                     response_status=None,
@@ -531,6 +531,11 @@ class DBService:
                     last_absent_alert=None,
                     last_leave_admin_alert=None,
                     last_return_request_time=None,
+                    # 상태 관련 필드 리셋 (지각/외출/조퇴/휴가/결석)
+                    status_type=None,
+                    status_set_at=None,
+                    alarm_blocked_until=None,
+                    status_auto_reset_date=None,
                     updated_at=to_naive(now)
                     # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                 )
@@ -579,7 +584,7 @@ class DBService:
                     update(Student)
                     .where(Student.id.in_(student_ids_to_reset))
                     .values(
-                        # 알림 관련 필드만 리셋
+                        # 알림 관련 필드 리셋
                         last_alert_sent=None,
                         alert_count=0,
                         response_status=None,
@@ -589,6 +594,11 @@ class DBService:
                         last_absent_alert=None,
                         last_leave_admin_alert=None,
                         last_return_request_time=None,
+                        # 상태 관련 필드 리셋 (지각/외출/조퇴/휴가/결석)
+                        status_type=None,
+                        status_set_at=None,
+                        alarm_blocked_until=None,
+                        status_auto_reset_date=None,
                         updated_at=to_naive(now)
                         # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                     )
@@ -748,7 +758,7 @@ class DBService:
         """
         외출/조퇴 상태 초기화 (입장 시)
         접속 종료 관련 모든 값 초기화
-        
+
         Args:
             student_id: 학생 ID
         """
