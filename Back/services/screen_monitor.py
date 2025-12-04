@@ -308,7 +308,7 @@ class ScreenMonitor:
         if LEVENSHTEIN_AVAILABLE:
             for word in words:
                 clean_word = ''.join(c for c in word if c.isalnum() or ord('가') <= ord(c) <= ord('힣'))
-                if clean_word and levenshtein_distance(student_name, clean_word) <= 1:
+                if clean_word and levenshtein_distance(student_name, clean_word) == 0:
                     return True
         
         return False
