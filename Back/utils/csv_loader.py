@@ -65,8 +65,8 @@ async def load_students_from_csv(csv_path: str = "students.csv") -> Tuple[int, i
                             errors.append(f"줄 {row_num} ({zep_name}): discord_id가 숫자가 아닙니다: {discord_id_str}")
                             continue
 
-                    # 이미 등록된 학생인지 확인
-                    existing = await DBService.get_student_by_zep_name(zep_name)
+                    # 이미 등록된 학생인지 확인 (정확 일치만)
+                    existing = await DBService.get_student_by_zep_name_exact(zep_name)
                     if existing:
                         skipped_count += 1
                         continue

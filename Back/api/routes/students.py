@@ -219,10 +219,10 @@ async def get_student(student_id: int):
 @router.post("", response_model=StudentResponse)
 async def create_student(data: StudentCreate):
     """학생 등록"""
-    existing = await db_service.get_student_by_zep_name(data.zep_name)
+    existing = await db_service.get_student_by_zep_name_exact(data.zep_name)
     if existing:
         raise HTTPException(status_code=400, detail="Student already exists")
-    
+
     student = await db_service.add_student(data.zep_name, data.discord_id)
     return student
 

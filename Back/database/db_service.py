@@ -140,6 +140,23 @@ class DBService:
             return student
     
     @staticmethod
+    async def get_student_by_zep_name_exact(zep_name: str) -> Optional[Student]:
+        """
+        ZEP 이름으로 학생 조회 (정확 일치만)
+
+        Args:
+            zep_name: ZEP 이름
+
+        Returns:
+            Student 객체 또는 None
+        """
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Student).where(Student.zep_name == zep_name)
+            )
+            return result.scalar_one_or_none()
+
+    @staticmethod
     async def get_student_by_zep_name(zep_name: str) -> Optional[Student]:
         """
         ZEP 이름으로 학생 조회 (정확 일치 → 부분 일치 → 유사도 매칭)
@@ -175,9 +192,16 @@ class DBService:
                     result = await session.execute(
                         select(Student).where(Student.zep_name.like(f'%{korean_name}%'))
                     )
-                    student = result.scalar_one_or_none()
-                    if student:
-                        return student
+                    candidates = result.scalars().all()
+
+                    if candidates:
+                        # 정확히 일치하는 학생이 있으면 우선 반환
+                        for candidate in candidates:
+                            if korean_name == candidate.zep_name:
+                                return candidate
+
+                        # 정확 일치가 없으면 첫 번째 후보 반환
+                        return candidates[0]
 
             # 3. Levenshtein 거리 기반 유사도 매칭 (오타 허용)
             if LEVENSHTEIN_AVAILABLE and korean_parts:
