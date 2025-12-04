@@ -24,6 +24,9 @@ students.db
 # CSV files (may contain personal information)
 students.csv
 
+# Settings file (user-specific configuration)
+Back/data/settings.json
+
 # Node.js
 node_modules/
 npm-debug.log*
