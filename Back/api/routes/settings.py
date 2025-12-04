@@ -75,14 +75,20 @@ async def get_settings():
 @router.put("", response_model=SettingsResponse)
 async def update_settings(data: SettingsUpdate):
     """설정 수정"""
+    updated_fields = {}
+
     if data.camera_off_threshold is not None:
         config.CAMERA_OFF_THRESHOLD = data.camera_off_threshold
+        updated_fields['camera_off_threshold'] = data.camera_off_threshold
     if data.alert_cooldown is not None:
         config.ALERT_COOLDOWN = data.alert_cooldown
+        updated_fields['alert_cooldown'] = data.alert_cooldown
     if data.check_interval is not None:
         config.CHECK_INTERVAL = data.check_interval
+        updated_fields['check_interval'] = data.check_interval
     if data.leave_alert_threshold is not None:
         config.LEAVE_ALERT_THRESHOLD = data.leave_alert_threshold
+        updated_fields['leave_alert_threshold'] = data.leave_alert_threshold
     if data.class_start_time is not None:
         config.CLASS_START_TIME = data.class_start_time
     if data.class_end_time is not None:
@@ -93,9 +99,16 @@ async def update_settings(data: SettingsUpdate):
         config.LUNCH_END_TIME = data.lunch_end_time
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
-    
+        updated_fields['daily_reset_time'] = data.daily_reset_time
+
     save_persisted_settings(config)
-    
+
+    # MonitorService에 설정 변경 알림 (실시간 반영)
+    if updated_fields:
+        system = await wait_for_system_instance(timeout=2)
+        if system and system.monitor_service:
+            system.monitor_service.update_settings(**updated_fields)
+
     admins = await DBService.get_admin_students()
     return {
         "camera_off_threshold": config.CAMERA_OFF_THRESHOLD,

@@ -121,7 +121,34 @@ class MonitorService:
         """모니터링 재개 (수동 제어)"""
         self.is_monitoring_paused = False
         print("▶️ 모니터링이 재개되었습니다.")
-    
+
+    def update_settings(self, **kwargs):
+        """
+        설정 실시간 업데이트
+
+        Args:
+            **kwargs: 업데이트할 설정 (camera_off_threshold, alert_cooldown, check_interval 등)
+        """
+        if 'camera_off_threshold' in kwargs:
+            self.camera_off_threshold = kwargs['camera_off_threshold']
+            print(f"⚙️ 카메라 OFF 임계값 변경: {self.camera_off_threshold}분")
+
+        if 'alert_cooldown' in kwargs:
+            self.alert_cooldown = kwargs['alert_cooldown']
+            print(f"⚙️ 알림 쿨다운 변경: {self.alert_cooldown}분")
+
+        if 'check_interval' in kwargs:
+            self.check_interval = kwargs['check_interval']
+            print(f"⚙️ 체크 간격 변경: {self.check_interval}초")
+
+        if 'leave_alert_threshold' in kwargs:
+            self.leave_alert_threshold = kwargs['leave_alert_threshold']
+            print(f"⚙️ 접속 종료 알림 임계값 변경: {self.leave_alert_threshold}분")
+
+        if 'daily_reset_time' in kwargs:
+            self.daily_reset_time = self._parse_daily_reset_time(kwargs['daily_reset_time'])
+            print(f"⚙️ 일일 초기화 시간 변경: {kwargs['daily_reset_time']}")
+
     def is_monitoring_active(self) -> bool:
         """
         모니터링이 활성화되어 있는지 확인
