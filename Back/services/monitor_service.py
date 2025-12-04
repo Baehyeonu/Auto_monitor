@@ -279,7 +279,7 @@ class MonitorService:
         await self._check_left_students()
         
         await self._check_return_requests()
-        
+
         students = await self.db_service.get_students_camera_off_too_long(
             self.camera_off_threshold,
             self.reset_time
@@ -299,7 +299,7 @@ class MonitorService:
             from database.db_service import now_seoul, SEOUL_TZ
             today_seoul = now_seoul().date()
             class_start_dt = datetime.combine(today_seoul, class_start)
-            class_start_dt_seoul = SEOUL_TZ.localize(class_start_dt)
+            class_start_dt_seoul = class_start_dt.replace(tzinfo=SEOUL_TZ)
             class_start_time_utc = class_start_dt_seoul.astimezone(timezone.utc)
         except:
             pass
@@ -561,10 +561,13 @@ class MonitorService:
         if not self.daily_reset_time:
             return
         
+        from database.db_service import SEOUL_TZ
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
         scheduled_dt = datetime.combine(now.date(), self.daily_reset_time)
-        scheduled_dt_utc = scheduled_dt.replace(tzinfo=timezone.utc)
+        # 서울 시간으로 설정 후 UTC로 변환
+        scheduled_dt_seoul = scheduled_dt.replace(tzinfo=SEOUL_TZ)
+        scheduled_dt_utc = scheduled_dt_seoul.astimezone(timezone.utc)
         
         if now >= scheduled_dt:
             all_students = await self.db_service.get_all_students()
@@ -618,7 +621,12 @@ class MonitorService:
         if self.last_daily_reset_date == today_str:
             return
         
+        from database.db_service import SEOUL_TZ
         scheduled_dt = datetime.combine(now.date(), self.daily_reset_time)
+        # 서울 시간으로 설정 후 UTC로 변환
+        scheduled_dt_seoul = scheduled_dt.replace(tzinfo=SEOUL_TZ)
+        reset_time_utc = scheduled_dt_seoul.astimezone(timezone.utc)
+
         if now >= scheduled_dt:
             self.is_resetting = True
             await manager.broadcast_system_log(
@@ -627,8 +635,6 @@ class MonitorService:
                 event_type="daily_reset",
                 message=f"일일 초기화가 진행 중입니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
             )
-            
-            reset_time_utc = scheduled_dt.replace(tzinfo=timezone.utc)
             reset_time = await self.db_service.reset_all_alert_status()
             self.reset_time = reset_time
             self.last_daily_reset_date = today_str

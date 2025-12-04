@@ -1196,7 +1196,7 @@ class DBService:
                     today_seoul = now_seoul().date()
                     custom_datetime = datetime.combine(today_seoul, time_obj)
                     # 서울 시간을 UTC로 변환
-                    custom_datetime_seoul = SEOUL_TZ.localize(custom_datetime)
+                    custom_datetime_seoul = custom_datetime.replace(tzinfo=SEOUL_TZ)
                     now = custom_datetime_seoul.astimezone(timezone.utc)
                 except ValueError:
                     pass  # 파싱 실패 시 현재 시간 사용
