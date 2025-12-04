@@ -1,5 +1,5 @@
 {
-  "camera_off_threshold": 22,
+  "camera_off_threshold": 1,
   "alert_cooldown": 10,
   "check_interval": 30,
   "leave_alert_threshold": 30,
