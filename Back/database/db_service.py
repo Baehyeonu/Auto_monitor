@@ -220,8 +220,8 @@ class DBService:
 
                         distance = levenshtein_distance(korean_name, student_name)
 
-                        # 거리 1 이하 (1글자 차이까지 허용)
-                        if distance <= 1 and distance < best_distance:
+                        # 정확히 일치하는 경우만 허용
+                        if distance == 0 and distance < best_distance:
                             best_match = student
                             best_distance = distance
 
