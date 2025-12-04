@@ -46,6 +46,10 @@ class Student(Base):
     status_set_at = Column(DateTime, nullable=True)  # 상태 설정 시간
     alarm_blocked_until = Column(DateTime, nullable=True, index=True)  # 알람 금지 종료 시간
     status_auto_reset_date = Column(DateTime, nullable=True)  # 자동 해제 날짜 (휴가/결석용)
+
+    # 예약된 상태 (시간이 되면 자동으로 status_type으로 변경)
+    scheduled_status_type = Column(String(20), nullable=True)  # 예약된 상태 타입
+    scheduled_status_time = Column(DateTime, nullable=True, index=True)  # 예약된 상태 적용 시간
     
     # 생성/수정 시간
     created_at = Column(DateTime, default=datetime.utcnow)

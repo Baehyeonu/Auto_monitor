@@ -274,6 +274,7 @@ class MonitorService:
         current_time_obj = now.time()
 
         await self._check_daily_reset(now)
+        await self._check_scheduled_status()
 
         # 수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관)
         await self._check_schedule_events(now)
@@ -638,7 +639,22 @@ class MonitorService:
         else:
             print(f"⏰ 일일 초기화 시간 전입니다 ({scheduled_dt.strftime('%H:%M')})")
             print("   💾 이전 상태를 유지합니다.")
-    
+
+    async def _check_scheduled_status(self):
+        """예약된 상태가 있는 학생들을 체크하고 시간이 되면 자동으로 상태 적용"""
+        try:
+            students = await self.db_service.get_students_with_scheduled_status()
+
+            for student in students:
+                success = await self.db_service.apply_scheduled_status(student.id)
+                if success:
+                    print(f"📅 [예약 상태 적용] {student.zep_name}님: {student.scheduled_status_type}")
+                    # 대시보드 업데이트
+                    await self.broadcast_dashboard_update_now()
+
+        except Exception as e:
+            print(f"❌ [예약 상태 체크 오류] {e}")
+
     async def _check_daily_reset(self, now: datetime):
         """매일 지정된 시각에 알림 상태를 초기화"""
         if not self.daily_reset_time:
