@@ -587,8 +587,10 @@ class DBService:
                     status_auto_reset_date=None,
                     # 퇴장 시간 리셋 (일일 초기화 시 전날 퇴장 기록 제거)
                     last_leave_time=None,
+                    # 상태 변경 시간 초기화 (일일 초기화 시간으로 설정)
+                    last_status_change=to_naive(now),
                     updated_at=to_naive(now)
-                    # is_cam_on, last_status_change는 실제 상태이므로 유지
+                    # is_cam_on은 실제 카메라 상태이므로 유지
                 )
             )
             await session.commit()
