@@ -585,8 +585,10 @@ class DBService:
                     status_set_at=None,
                     alarm_blocked_until=None,
                     status_auto_reset_date=None,
+                    # 퇴장 시간 리셋 (일일 초기화 시 전날 퇴장 기록 제거)
+                    last_leave_time=None,
                     updated_at=to_naive(now)
-                    # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
+                    # is_cam_on, last_status_change는 실제 상태이므로 유지
                 )
             )
             await session.commit()
