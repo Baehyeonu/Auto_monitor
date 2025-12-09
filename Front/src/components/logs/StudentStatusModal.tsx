@@ -5,7 +5,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { fetchStudents } from '@/services/studentService'
 import type { Student } from '@/types/student'
 import { formatKoreanTime } from '@/lib/utils'
+import { StudentActionModal } from '@/components/students/StudentActionModal'
 import { StudentStatusManagementModal } from '@/components/students/StudentStatusManagementModal'
+import { SendDMModal } from '@/components/students/SendDMModal'
+import { StudentLogModal } from '@/components/students/StudentLogModal'
 
 interface StudentStatusModalProps {
   open: boolean
@@ -63,7 +66,10 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
   const [students, setStudents] = useState<Student[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false)
   const [isStatusManagementOpen, setIsStatusManagementOpen] = useState(false)
+  const [isDMModalOpen, setIsDMModalOpen] = useState(false)
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false)
 
   const loadStudents = useCallback(async () => {
     if (!open) return
@@ -133,14 +139,19 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
 
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student)
-    setIsStatusManagementOpen(true)
+    setIsActionModalOpen(true)
   }
 
-  const handleStatusManagementClose = () => {
-    setIsStatusManagementOpen(false)
-    setSelectedStudent(null)
-    // 학생 목록 새로고침
-    loadStudents()
+  const handleSelectDM = () => {
+    setIsDMModalOpen(true)
+  }
+
+  const handleSelectLog = () => {
+    setIsLogModalOpen(true)
+  }
+
+  const handleSelectStatus = () => {
+    setIsStatusManagementOpen(true)
   }
 
   return (
@@ -190,13 +201,42 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
         </DialogContent>
       </Dialog>
 
+      <StudentActionModal
+        open={isActionModalOpen}
+        onOpenChange={setIsActionModalOpen}
+        student={selectedStudent}
+        onSelectDM={handleSelectDM}
+        onSelectLog={handleSelectLog}
+        onSelectStatus={handleSelectStatus}
+      />
+
+      <SendDMModal
+        open={isDMModalOpen}
+        onOpenChange={setIsDMModalOpen}
+        student={selectedStudent}
+        onBack={() => {
+          setIsDMModalOpen(false)
+          setIsActionModalOpen(true)
+        }}
+      />
+
+      <StudentLogModal
+        open={isLogModalOpen}
+        onOpenChange={setIsLogModalOpen}
+        student={selectedStudent}
+        onBack={() => {
+          setIsLogModalOpen(false)
+          setIsActionModalOpen(true)
+        }}
+      />
+
       <StudentStatusManagementModal
         open={isStatusManagementOpen}
-        onOpenChange={handleStatusManagementClose}
+        onOpenChange={setIsStatusManagementOpen}
         student={selectedStudent}
         onBack={() => {
           setIsStatusManagementOpen(false)
-          setSelectedStudent(null)
+          setIsActionModalOpen(true)
         }}
         onUpdated={() => {
           loadStudents()
