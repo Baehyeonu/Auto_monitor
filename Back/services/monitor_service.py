@@ -681,9 +681,13 @@ class MonitorService:
             reset_time = await self.db_service.reset_all_alert_status()
             self.reset_time = reset_time
             self.last_daily_reset_date = today_str
-            
+
             # 날짜 기반 상태 자동 해제 (휴가/결석 등)
             await self.db_service.check_and_reset_status_by_date()
+
+            # 오늘 접속한 학생 목록 초기화
+            if self.slack_listener:
+                self.slack_listener.joined_students_today.clear()
 
             self.is_resetting = False
 
