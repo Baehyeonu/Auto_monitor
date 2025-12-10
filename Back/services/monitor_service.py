@@ -239,13 +239,8 @@ class MonitorService:
             
             # 점심 시작 감지 (점심 시간에 진입했을 때)
             if is_lunch_time and self.last_lunch_check != "in_lunch":
-                # 점심 시작 시간을 서울 시간으로 생성 후 UTC로 변환
-                lunch_start_local = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_START_TIME}", "%Y-%m-%d %H:%M")
-                lunch_start_local = lunch_start_local.replace(tzinfo=ZoneInfo("Asia/Seoul"))
-                lunch_start_dt = lunch_start_local.astimezone(timezone.utc)
-                # 오늘 접속한 학생들만 리셋
-                joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
-                await self.db_service.reset_camera_off_timers(lunch_start_dt, joined_student_ids=joined_today)
+                # 점심 시작 시에는 타이머 리셋 없이 로그만 기록
+                # 점심 종료 시 타이머 리셋으로 충분함
                 self.last_lunch_check = "in_lunch"
                 await manager.broadcast_system_log(
                     level="info",
