@@ -391,6 +391,16 @@ async def send_dm_to_student(student_id: int, request: SendDMRequest):
         )
         return {"success": True, "message": "DM sent successfully"}
     else:
+        # DM 전송 실패 시 웹페이지 로그에 표시
+        error_message = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+        await manager.broadcast_system_log(
+            level="error",
+            source="discord",
+            event_type="dm_failed",
+            message=error_message,
+            student_name=student.zep_name,
+            student_id=student.id
+        )
         raise HTTPException(status_code=500, detail=f"Failed to send DM to {student.zep_name}. Check Discord bot logs for details.")
 
 
