@@ -266,15 +266,16 @@ class DBService:
             return result.scalar_one_or_none()
     
     @staticmethod
-    async def update_camera_status(zep_name: str, is_cam_on: bool, status_change_time: Optional[datetime] = None) -> bool:
+    async def update_camera_status(zep_name: str, is_cam_on: bool, status_change_time: Optional[datetime] = None, is_restoring: bool = False) -> bool:
         """
         카메라 상태 업데이트
-        
+
         Args:
             zep_name: ZEP 이름
             is_cam_on: 카메라 ON/OFF 상태
             status_change_time: 상태 변경 시간 (None이면 현재 시간 사용, 히스토리 복원 시 메시지 타임스탬프 사용)
-            
+            is_restoring: 히스토리 복원 중 여부 (True면 status_type을 초기화하지 않음)
+
         Returns:
             업데이트 성공 여부
         """
@@ -298,19 +299,21 @@ class DBService:
                 update_values["alert_count"] = 0
                 # 카메라가 ON이면 접속 종료 상태도 초기화 (재입장한 경우)
                 update_values["last_leave_time"] = None
-                
-                # 지각/외출 상태인 경우 상태 변화가 있었으므로 정상으로 복귀
-                # 먼저 현재 상태를 확인해야 하므로, 별도 쿼리로 처리
-                result = await session.execute(
-                    select(Student.status_type).where(Student.zep_name == zep_name)
-                )
-                current_status = result.scalar_one_or_none()
-                
-                if current_status in ["late", "leave"]:
-                    # 지각/외출 상태를 정상으로 변경 (상태 변화가 있었으므로)
-                    update_values["status_type"] = None
-                    update_values["status_set_at"] = None
-                    update_values["alarm_blocked_until"] = None
+
+                # 히스토리 복원 중이 아닐 때만 지각/외출 상태를 초기화
+                if not is_restoring:
+                    # 지각/외출 상태인 경우 상태 변화가 있었으므로 정상으로 복귀
+                    # 먼저 현재 상태를 확인해야 하므로, 별도 쿼리로 처리
+                    result = await session.execute(
+                        select(Student.status_type).where(Student.zep_name == zep_name)
+                    )
+                    current_status = result.scalar_one_or_none()
+
+                    if current_status in ["late", "leave"]:
+                        # 지각/외출 상태를 정상으로 변경 (상태 변화가 있었으므로)
+                        update_values["status_type"] = None
+                        update_values["status_set_at"] = None
+                        update_values["alarm_blocked_until"] = None
             
             result = await session.execute(
                 update(Student)
@@ -601,37 +604,79 @@ class DBService:
         """
         초기화 시간 이후 접속한 학생의 상태를 보존하면서 초기화
         (프로그램 재시작 시 이전 상태 복원용)
-        
+
         Args:
             reset_time: 초기화 시간 (이 시간 이후 접속한 학생은 상태 유지)
-        
+
         Returns:
             초기화 시간 (datetime)
         """
         async with AsyncSessionLocal() as session:
             now = utcnow()
-            
+
             # reset_time을 timezone-aware로 변환
             if reset_time.tzinfo is None:
                 reset_time_utc = reset_time.replace(tzinfo=timezone.utc)
             else:
                 reset_time_utc = reset_time
-            
+
+            # 오늘 날짜 (서울 시간 기준)
+            today_seoul = now_seoul().date()
+
             # 모든 학생 조회하여 Python에서 필터링 (timezone-naive 처리)
             result = await session.execute(select(Student))
             all_students = result.scalars().all()
-            
+
             student_ids_to_reset = []
-            
+            student_ids_to_preserve_status = []
+
             for student in all_students:
-                if student.last_status_change.tzinfo is None:
-                    last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
+                # 상태가 있는 학생은 status_set_at 날짜 기준으로 판단
+                if student.status_set_at:
+                    status_set_at_utc = student.status_set_at if student.status_set_at.tzinfo else student.status_set_at.replace(tzinfo=timezone.utc)
+                    status_set_date = status_set_at_utc.astimezone(SEOUL_TZ).date()
+
+                    if status_set_date == today_seoul:
+                        # 오늘 설정된 상태는 유지 (외출/지각/조퇴/휴가/결석 보존)
+                        student_ids_to_preserve_status.append(student.id)
+                        print(f"  [재시작 복원] {student.zep_name}: 오늘 설정된 상태({student.status_type}) 유지")
+                    else:
+                        # 어제 이전 상태는 리셋
+                        student_ids_to_reset.append(student.id)
+                        print(f"  [재시작 복원] {student.zep_name}: 어제 이전 상태({student.status_type}) 리셋")
                 else:
-                    last_change_utc = student.last_status_change
-                
-                if last_change_utc <= reset_time_utc:
-                    student_ids_to_reset.append(student.id)
-            
+                    # 상태가 없는 학생: last_status_change가 초기화 시간 이전이면 리셋
+                    if student.last_status_change.tzinfo is None:
+                        last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
+                    else:
+                        last_change_utc = student.last_status_change
+
+                    if last_change_utc <= reset_time_utc:
+                        student_ids_to_reset.append(student.id)
+
+            # 상태 유지 대상: 알림 관련만 리셋, 상태는 유지
+            if student_ids_to_preserve_status:
+                await session.execute(
+                    update(Student)
+                    .where(Student.id.in_(student_ids_to_preserve_status))
+                    .values(
+                        # 알림 관련 필드만 리셋
+                        last_alert_sent=None,
+                        alert_count=0,
+                        response_status=None,
+                        response_time=None,
+                        is_absent=False,
+                        absent_type=None,
+                        last_absent_alert=None,
+                        last_leave_admin_alert=None,
+                        last_return_request_time=None,
+                        updated_at=to_naive(now)
+                        # status_type, status_set_at, alarm_blocked_until, status_auto_reset_date 유지
+                        # is_cam_on, last_status_change, last_leave_time 유지
+                    )
+                )
+
+            # 상태 리셋 대상: 모두 리셋
             if student_ids_to_reset:
                 await session.execute(
                     update(Student)
@@ -647,7 +692,7 @@ class DBService:
                         last_absent_alert=None,
                         last_leave_admin_alert=None,
                         last_return_request_time=None,
-                        # 상태 관련 필드 리셋 (지각/외출/조퇴/휴가/결석)
+                        # 상태 관련 필드 리셋 (어제 이전 상태)
                         status_type=None,
                         status_set_at=None,
                         alarm_blocked_until=None,
@@ -656,22 +701,23 @@ class DBService:
                         # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                     )
                 )
-                await session.commit()
-            
+
+            await session.commit()
+
             return reset_time_utc
     
     @staticmethod
     async def reset_camera_off_timers(reset_time: datetime, joined_student_ids: Optional[set] = None):
         """
-        점심 시간 시작/종료 시 카메라 OFF인 학생들과 퇴장한 학생들의 시간 초기화
+        점심 시간 시작/종료 시 접속한 학생들의 타이머와 퇴장한 학생들의 시간 초기화
 
         Args:
             reset_time: 초기화할 시간 (점심 시작/종료 시간)
-            joined_student_ids: 오늘 접속한 학생 ID 집합 (None이면 모든 카메라 OFF 학생 리셋)
+            joined_student_ids: 오늘 접속한 학생 ID 집합 (None이면 모든 학생 리셋)
         """
         async with AsyncSessionLocal() as session:
-            # 카메라 OFF 학생들의 last_status_change 리셋
-            camera_query = update(Student).where(Student.is_cam_on == False)
+            # 오늘 접속한 모든 학생들의 last_status_change 리셋 (카메라 ON/OFF 무관)
+            camera_query = update(Student)
 
             # joined_student_ids가 제공되면 해당 학생들만 리셋
             if joined_student_ids is not None:
