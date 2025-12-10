@@ -80,7 +80,83 @@ class DiscordBot(commands.Bot):
         
         # 빈 문자열이면 그대로 반환
         return zep_name.strip()
-    
+
+    def _is_student_pattern(self, name: str) -> bool:
+        """
+        학생 이름 패턴 감지: 영어 + 숫자 + 한글 조합 (순서 무관)
+        예: IH_02_배현우, 배현우_IH02, 02IH배현우 등
+
+        Args:
+            name: Discord 표시 이름
+
+        Returns:
+            bool: 학생 패턴 여부
+        """
+        has_english = bool(re.search(r'[A-Za-z]', name))
+        has_digit = bool(re.search(r'\d', name))
+        has_korean = bool(re.search(r'[\uAC00-\uD7A3]', name))
+
+        # 세 가지가 모두 포함된 경우만 학생으로 판단
+        return has_english and has_digit and has_korean
+
+    async def get_guild_members(self):
+        """
+        Discord 서버의 모든 멤버 가져오기 + 학생 패턴 자동 감지
+
+        Returns:
+            List[Dict]: 멤버 정보 리스트
+            [
+                {
+                    "discord_id": int,
+                    "discord_name": str,
+                    "display_name": str,
+                    "is_student": bool  # 패턴 분석 결과
+                },
+                ...
+            ]
+        """
+        if not config.DISCORD_SERVER_ID:
+            raise ValueError("DISCORD_SERVER_ID가 설정되지 않았습니다. .env 파일에서 Discord 서버 ID를 설정해주세요.")
+
+        try:
+            guild_id = int(config.DISCORD_SERVER_ID)
+            guild = self.get_guild(guild_id)
+
+            if not guild:
+                raise ValueError(f"Discord 서버 ID {guild_id}를 찾을 수 없습니다. 봇이 해당 서버에 초대되어 있는지 확인해주세요.")
+
+            members = []
+
+            # 비동기로 모든 멤버 가져오기
+            async for member in guild.fetch_members(limit=None):
+                # 봇 제외
+                if member.bot:
+                    continue
+
+                display_name = member.display_name or member.name
+
+                # 패턴 분석: 영어+숫자+한글 조합 감지
+                is_student = self._is_student_pattern(display_name)
+
+                # JSON 직렬화 시 JS 숫자 정밀도 손실을 막기 위해 문자열로 반환
+                members.append({
+                    "discord_id": str(member.id),
+                    "discord_name": member.name,
+                    "display_name": display_name,
+                    "is_student": is_student
+                })
+
+            # 학생 패턴이 감지된 멤버를 앞에 정렬
+            members.sort(key=lambda m: (not m["is_student"], m["display_name"]))
+
+            return members
+
+        except ValueError:
+            raise
+        except Exception as e:
+            print(f"❌ [Discord] 멤버 가져오기 실패: {type(e).__name__}: {str(e)}")
+            raise
+
     def _setup_events(self):
         """이벤트 핸들러 설정"""
         

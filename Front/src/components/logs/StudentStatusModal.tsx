@@ -121,6 +121,7 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
         
         // 추가 필터링 (API에서 관리자를 제외했지만, 혹시 모를 경우를 대비)
         const filteredStudents = allStudents.filter((s) => !s.is_admin)
+        console.log(`[특이사항] 총 ${filteredStudents.length}명 로드됨:`, filteredStudents.map(s => ({name: s.zep_name, status: s.status_type, leave: s.last_leave_time})))
         setStudents(filteredStudents)
       }
     } catch (error) {

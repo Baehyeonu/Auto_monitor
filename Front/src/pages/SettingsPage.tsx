@@ -1,6 +1,7 @@
 import { useSettings } from '@/hooks/useSettings'
 import { MonitoringSettings } from '@/components/settings/MonitoringSettings'
 import { DiscordSettings } from '@/components/settings/DiscordSettings'
+import { DiscordSyncSettings } from '@/components/settings/DiscordSyncSettings'
 import { SlackSettings } from '@/components/settings/SlackSettings'
 import { ScheduleSettings } from '@/components/settings/ScheduleSettings'
 import { ScreenMonitorSettings } from '@/components/settings/ScreenMonitorSettings'
@@ -46,6 +47,7 @@ export default function SettingsPage() {
         <DatabaseSettings />
         <IgnoreKeywordsSettings />
       </div>
+      <DiscordSyncSettings />
     </div>
   )
 }
