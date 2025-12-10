@@ -60,6 +60,10 @@ async def init_db():
                 await conn.execute(text("ALTER TABLE students ADD COLUMN alarm_blocked_until DATETIME"))
             if "status_auto_reset_date" not in columns:
                 await conn.execute(text("ALTER TABLE students ADD COLUMN status_auto_reset_date DATETIME"))
+            if "scheduled_status_type" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN scheduled_status_type VARCHAR(20)"))
+            if "scheduled_status_time" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN scheduled_status_time DATETIME"))
         else:
             # PostgreSQL의 경우
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"))
