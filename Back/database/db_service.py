@@ -601,37 +601,77 @@ class DBService:
         """
         초기화 시간 이후 접속한 학생의 상태를 보존하면서 초기화
         (프로그램 재시작 시 이전 상태 복원용)
-        
+
         Args:
             reset_time: 초기화 시간 (이 시간 이후 접속한 학생은 상태 유지)
-        
+
         Returns:
             초기화 시간 (datetime)
         """
         async with AsyncSessionLocal() as session:
             now = utcnow()
-            
+
             # reset_time을 timezone-aware로 변환
             if reset_time.tzinfo is None:
                 reset_time_utc = reset_time.replace(tzinfo=timezone.utc)
             else:
                 reset_time_utc = reset_time
-            
+
+            # 오늘 날짜 (서울 시간 기준)
+            today_seoul = now_seoul().date()
+
             # 모든 학생 조회하여 Python에서 필터링 (timezone-naive 처리)
             result = await session.execute(select(Student))
             all_students = result.scalars().all()
-            
+
             student_ids_to_reset = []
-            
+            student_ids_to_preserve_status = []
+
             for student in all_students:
                 if student.last_status_change.tzinfo is None:
                     last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
                 else:
                     last_change_utc = student.last_status_change
-                
+
                 if last_change_utc <= reset_time_utc:
-                    student_ids_to_reset.append(student.id)
-            
+                    # 상태가 오늘 설정된 것인지 확인
+                    if student.status_set_at:
+                        status_set_at_utc = student.status_set_at if student.status_set_at.tzinfo else student.status_set_at.replace(tzinfo=timezone.utc)
+                        status_set_date = status_set_at_utc.astimezone(SEOUL_TZ).date()
+
+                        if status_set_date == today_seoul:
+                            # 오늘 설정된 상태는 유지 (외출/지각/조퇴/휴가/결석 보존)
+                            student_ids_to_preserve_status.append(student.id)
+                        else:
+                            # 어제 이전 상태는 리셋
+                            student_ids_to_reset.append(student.id)
+                    else:
+                        # status_set_at이 없으면 일반 리셋
+                        student_ids_to_reset.append(student.id)
+
+            # 상태 유지 대상: 알림 관련만 리셋, 상태는 유지
+            if student_ids_to_preserve_status:
+                await session.execute(
+                    update(Student)
+                    .where(Student.id.in_(student_ids_to_preserve_status))
+                    .values(
+                        # 알림 관련 필드만 리셋
+                        last_alert_sent=None,
+                        alert_count=0,
+                        response_status=None,
+                        response_time=None,
+                        is_absent=False,
+                        absent_type=None,
+                        last_absent_alert=None,
+                        last_leave_admin_alert=None,
+                        last_return_request_time=None,
+                        updated_at=to_naive(now)
+                        # status_type, status_set_at, alarm_blocked_until, status_auto_reset_date 유지
+                        # is_cam_on, last_status_change, last_leave_time 유지
+                    )
+                )
+
+            # 상태 리셋 대상: 모두 리셋
             if student_ids_to_reset:
                 await session.execute(
                     update(Student)
@@ -647,7 +687,7 @@ class DBService:
                         last_absent_alert=None,
                         last_leave_admin_alert=None,
                         last_return_request_time=None,
-                        # 상태 관련 필드 리셋 (지각/외출/조퇴/휴가/결석)
+                        # 상태 관련 필드 리셋 (어제 이전 상태)
                         status_type=None,
                         status_set_at=None,
                         alarm_blocked_until=None,
@@ -656,8 +696,9 @@ class DBService:
                         # is_cam_on, last_status_change, last_leave_time은 실제 상태이므로 유지
                     )
                 )
-                await session.commit()
-            
+
+            await session.commit()
+
             return reset_time_utc
     
     @staticmethod
