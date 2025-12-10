@@ -10,6 +10,7 @@ from config import config
 from database import DBService
 from services.admin_manager import admin_manager
 import re
+import asyncio
 
 
 class DiscordBot(commands.Bot):
@@ -583,17 +584,59 @@ class DiscordBot(commands.Bot):
                     f"⏱️ 경과 시간: 약 {elapsed_minutes}분\n\n"
                     f"💡 카메라를 켜주세요."
                 )
-            
+
             return True
-            
+
         except discord.Forbidden:
-            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except discord.NotFound:
-            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - Discord 사용자를 찾을 수 없습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except Exception as e:
-            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
     
     async def _handle_button_response(self, interaction: discord.Interaction, action: str):
@@ -902,13 +945,55 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
-            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except discord.NotFound:
-            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - Discord 사용자를 찾을 수 없습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except Exception as e:
-            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
     
     async def _handle_admin_absent_response(self, interaction: discord.Interaction, custom_id: str):
@@ -1029,14 +1114,22 @@ class DiscordBot(commands.Bot):
                     ephemeral=True
                 )
                 return
-            
+
             user = await self.fetch_user(student.discord_id)
-            last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
-            elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
-            
+
+            # 경과 시간 계산: 퇴장한 경우 last_leave_time, 아니면 last_status_change 사용
+            if student.last_leave_time:
+                ref_time = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
+                status_text = "접속 종료"
+            else:
+                ref_time = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
+                status_text = "카메라 OFF"
+
+            elapsed_minutes = int((datetime.now(timezone.utc) - ref_time).total_seconds() / 60)
+
             embed = discord.Embed(
-                title="⚠️ 접속 종료 확인",
-                description=f"{student.zep_name}님, 접속 종료 후 {elapsed_minutes}분이 지났습니다.",
+                title="⚠️ 상태 확인",
+                description=f"{student.zep_name}님, {status_text} 후 {elapsed_minutes}분이 지났습니다.",
                 color=discord.Color.orange()
             )
             
@@ -1065,10 +1158,13 @@ class DiscordBot(commands.Bot):
                     f"❌ {student.zep_name}님에게 DM을 보낼 수 없습니다. (DM 차단 또는 친구 관계 필요)",
                     ephemeral=True
                 )
-            
+
         except Exception as e:
+            print(f"❌ [Discord] 관리자 수강생 확인 처리 실패: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             await interaction.response.send_message(
-                "❌ 처리 중 오류가 발생했습니다.",
+                f"❌ 처리 중 오류가 발생했습니다: {type(e).__name__}",
                 ephemeral=True
             )
     
@@ -1151,13 +1247,55 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
-            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except discord.NotFound:
-            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - Discord 사용자를 찾을 수 없습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except Exception as e:
-            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
     
     async def send_manual_camera_alert(self, student) -> bool:
@@ -1201,13 +1339,55 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
-            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except discord.NotFound:
-            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - Discord 사용자를 찾을 수 없습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except Exception as e:
-            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
     
     async def send_face_not_visible_alert(self, student) -> bool:
@@ -1239,13 +1419,55 @@ class DiscordBot(commands.Bot):
             return True
             
         except discord.Forbidden:
-            print(f"❌ [Discord] DM 전송 실패 (Forbidden): {student.zep_name} (Discord ID: {student.discord_id}) - DM 차단 또는 친구 관계 필요")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - 사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except discord.NotFound:
-            print(f"❌ [Discord] DM 전송 실패 (NotFound): {student.zep_name} (Discord ID: {student.discord_id}) - 사용자를 찾을 수 없음")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - Discord 사용자를 찾을 수 없습니다"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
         except Exception as e:
-            print(f"❌ [Discord] DM 전송 실패 (Exception): {student.zep_name} (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}")
+            error_msg = f"❌ DM 전송 실패: {student.zep_name}님 (Discord ID: {student.discord_id}) - {type(e).__name__}: {str(e)}"
+            print(f"❌ [Discord] {error_msg}")
+            # 웹페이지 로그에도 표시
+            try:
+                from api.websocket_manager import manager
+                asyncio.create_task(manager.broadcast_system_log(
+                    level="error",
+                    source="discord",
+                    event_type="dm_failed",
+                    message=error_msg,
+                    student_name=student.zep_name,
+                    student_id=student.id
+                ))
+            except Exception:
+                pass
             return False
 
 
