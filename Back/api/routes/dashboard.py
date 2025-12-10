@@ -189,7 +189,9 @@ async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_
             "elapsed_minutes": elapsed_minutes,
             "is_threshold_exceeded": elapsed_minutes >= config.CAMERA_OFF_THRESHOLD,
             "alert_count": student.alert_count,
-            "not_joined": is_not_joined
+            "not_joined": is_not_joined,
+            "status_type": student.status_type,
+            "status_set_at": student.status_set_at.isoformat() if student.status_set_at else None
         }
 
         if filter == "all":

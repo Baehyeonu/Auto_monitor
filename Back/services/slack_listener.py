@@ -298,7 +298,7 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp, is_restoring=self.is_restoring)
 
             if not success:
                 return
@@ -356,7 +356,7 @@ class SlackListener:
             
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
 
             if not success:
                 return
@@ -419,7 +419,7 @@ class SlackListener:
                 self.joined_students_today.add(student_id)
 
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
 
             # 상태 변경 로그
             if success:
@@ -480,7 +480,7 @@ class SlackListener:
                 return
 
             await self.db_service.record_user_leave(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp)
+            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
 
             # 상태 변경 로그
             if success:
