@@ -9,6 +9,7 @@ class Config(BaseSettings):
     """애플리케이션 설정"""
     
     DISCORD_BOT_TOKEN: str
+    DISCORD_SERVER_ID: Optional[str] = None
     INSTRUCTOR_CHANNEL_ID: Optional[str] = None
     ADMIN_USER_IDS: str = ""
     

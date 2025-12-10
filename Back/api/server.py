@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from api.routes import students, dashboard, settings, reports
+from api.routes import students, dashboard, settings, reports, discord
 from api.websocket_manager import manager
 
 app = FastAPI(
@@ -56,6 +56,7 @@ app.include_router(students.router, prefix="/api/v1/students", tags=["students"]
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(discord.router, prefix="/api/v1/discord", tags=["discord"])
 
 frontend_dist_path = Path(__file__).parent.parent / "Front" / "dist"
 if not frontend_dist_path.exists():
