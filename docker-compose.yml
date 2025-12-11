@@ -20,10 +20,10 @@ services:
       - monitor_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
 
   frontend:
     build:
@@ -33,8 +33,7 @@ services:
     ports:
       - "80:80"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
     networks:
       - monitor_network

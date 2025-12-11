@@ -149,24 +149,26 @@ class ZepMonitoringSystem:
             print(f"✅ Discord Bot 준비 완료: {self.discord_bot.user.name}#{self.discord_bot.user.discriminator}")
             
             await self._print_admin_info()
-            
+
             # ⭐ 일일 초기화를 먼저 실행 (Slack 동기화 전에)
             # 초기화 후 Slack 동기화를 통해 최신 상태를 반영
             print("\n🔧 프로그램 시작 시 초기화 확인 중...")
             await self.monitor_service._check_startup_reset()
-            
-            # ⭐ Slack 동기화 완료 (await로 대기)
-            print("\n📡 Slack 히스토리 동기화 시작...")
-            await self.slack_listener.restore_state_from_history(lookback_hours=24)
-            print("✅ Slack 동기화 완료\n")
-            
-            # ⭐ 이제 Slack 리스너 시작 (실시간 리스닝만)
-            slack_task = asyncio.create_task(self.slack_listener.start_listener())
-            self.tasks.append(slack_task)
-            
-            await asyncio.sleep(1)
-            print("✅ Slack 실시간 리스닝 시작됨")
-            
+
+            # ⭐ Slack 동기화를 백그라운드로 실행 (API 서버 시작을 막지 않음)
+            async def run_slack_sync():
+                print("\n📡 Slack 히스토리 동기화 시작...")
+                await self.slack_listener.restore_state_from_history(lookback_hours=24)
+                print("✅ Slack 동기화 완료\n")
+                # 동기화 완료 후 실시간 리스닝 시작
+                slack_task = asyncio.create_task(self.slack_listener.start_listener())
+                self.tasks.append(slack_task)
+                await asyncio.sleep(1)
+                print("✅ Slack 실시간 리스닝 시작됨")
+
+            # 백그라운드에서 Slack 동기화 실행
+            asyncio.create_task(run_slack_sync())
+
             # ⭐ Monitor Service 시작 (_check_startup_reset은 이미 실행했으므로 제외)
             monitor_task = asyncio.create_task(self.monitor_service.start_without_reset())
             self.tasks.append(monitor_task)
