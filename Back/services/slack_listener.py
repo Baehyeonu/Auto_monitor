@@ -33,6 +33,7 @@ class SlackListener:
         self.last_event_times: Dict[Tuple[int, str], float] = {}
         self.duplicate_threshold = 0.01
         self.student_cache: Dict[str, int] = {}
+        self.logged_match_failures: set = set()  # 이미 로그 출력한 매칭 실패 이름들
 
         # 폴링 메커니즘 (Socket Mode 누락 메시지 보완)
         self.last_poll_timestamp = datetime.now().timestamp()
@@ -311,8 +312,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 카메라 ON] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 카메라 ON] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
@@ -372,8 +377,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 카메라 OFF] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 카메라 OFF] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
@@ -435,8 +444,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 입장] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 입장] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_join", message_ts):
@@ -501,8 +514,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 퇴장] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 퇴장] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_leave", message_ts):
@@ -555,7 +572,8 @@ class SlackListener:
             self.is_restoring = True
             self.joined_students_today.clear()
             self.last_event_times.clear()
-            
+            self.logged_match_failures.clear()  # 매칭 실패 로그 기록 초기화
+
             await self._refresh_student_cache()
             
             # monitor_service의 reset_time 사용 (UTC 기준)
