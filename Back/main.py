@@ -157,8 +157,18 @@ class ZepMonitoringSystem:
 
             # ⭐ Slack 동기화를 백그라운드로 실행 (API 서버 시작을 막지 않음)
             async def run_slack_sync():
-                print("\n📡 Slack 히스토리 동기화 시작...")
-                await self.slack_listener.restore_state_from_history(lookback_hours=24)
+                # 오늘 초기화 시간(서울 07:00 -> UTC 변환됨)부터 현재까지의 시간 계산
+                # monitor_service.reset_time은 이미 서울 07:00을 UTC로 변환한 값
+                if self.monitor_service.reset_time:
+                    reset_time_utc = self.monitor_service.reset_time
+                    now_utc = datetime.now(timezone.utc)
+                    hours_since_reset = (now_utc - reset_time_utc).total_seconds() / 3600
+                    lookback_hours = max(1, int(hours_since_reset) + 1)  # 최소 1시간, 여유있게 +1시간
+                else:
+                    lookback_hours = 24  # fallback
+
+                print(f"\n📡 Slack 히스토리 동기화 시작 (최근 {lookback_hours}시간)...")
+                await self.slack_listener.restore_state_from_history(lookback_hours=lookback_hours)
                 print("✅ Slack 동기화 완료\n")
                 # 동기화 완료 후 실시간 리스닝 시작
                 slack_task = asyncio.create_task(self.slack_listener.start_listener())
