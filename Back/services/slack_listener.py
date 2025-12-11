@@ -533,8 +533,8 @@ class SlackListener:
                 # monitor_service의 reset_time 사용 (이미 UTC)
                 reset_time_utc = self.monitor_service.reset_time
                 today_reset_ts = reset_time_utc.timestamp()
-                # 24시간 전부터 조회
-                oldest_dt = reset_time_utc - timedelta(hours=24)
+                # lookback_hours만큼 이전부터 조회
+                oldest_dt = reset_time_utc - timedelta(hours=lookback_hours)
                 oldest_ts = oldest_dt.timestamp()
             elif config.DAILY_RESET_TIME:
                 from datetime import time as time_type
@@ -548,7 +548,7 @@ class SlackListener:
                     # UTC로 변환
                     today_reset_utc = today_reset_local.replace(tzinfo=timezone.utc)
                     today_reset_ts = today_reset_utc.timestamp()
-                    oldest_dt = today_reset_utc - timedelta(hours=24)
+                    oldest_dt = today_reset_utc - timedelta(hours=lookback_hours)
                     oldest_ts = oldest_dt.timestamp()
                 except ValueError:
                     oldest_dt_local = datetime.combine(now_local.date(), time_type(0, 0))

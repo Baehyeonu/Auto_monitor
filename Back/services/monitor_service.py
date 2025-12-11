@@ -256,9 +256,8 @@ class MonitorService:
                 lunch_end_local = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
                 lunch_end_local = lunch_end_local.replace(tzinfo=ZoneInfo("Asia/Seoul"))
                 lunch_end_dt = lunch_end_local.astimezone(timezone.utc)
-                # 오늘 접속한 학생들만 리셋
-                joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
-                await self.db_service.reset_camera_off_timers(lunch_end_dt, joined_student_ids=joined_today)
+                # 카메라 OFF 상태인 모든 학생의 타이머 리셋 (joined_student_ids=None)
+                await self.db_service.reset_camera_off_timers(lunch_end_dt, joined_student_ids=None)
                 self.last_lunch_check = "after_lunch"
                 await manager.broadcast_system_log(
                     level="info",
