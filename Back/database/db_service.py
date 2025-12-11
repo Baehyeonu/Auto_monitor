@@ -280,17 +280,16 @@ class DBService:
             업데이트 성공 여부
         """
         async with AsyncSessionLocal() as session:
-            if status_change_time is None:
-                status_change_time = utcnow()
-            else:
-                if status_change_time.tzinfo is None:
-                    status_change_time = status_change_time.replace(tzinfo=timezone.utc)
-            
             update_values = {
                 "is_cam_on": is_cam_on,
-                "last_status_change": to_naive(status_change_time),
                 "updated_at": to_naive(utcnow())
             }
+
+            # status_change_time이 명시적으로 전달된 경우에만 last_status_change 업데이트
+            if status_change_time is not None:
+                if status_change_time.tzinfo is None:
+                    status_change_time = status_change_time.replace(tzinfo=timezone.utc)
+                update_values["last_status_change"] = to_naive(status_change_time)
             
             if is_cam_on:
                 update_values["last_alert_sent"] = None
@@ -590,8 +589,8 @@ class DBService:
                     status_auto_reset_date=None,
                     # 퇴장 시간 리셋 (일일 초기화 시 전날 퇴장 기록 제거)
                     last_leave_time=None,
-                    # 상태 변경 시간 초기화 (일일 초기화 시간으로 설정)
-                    last_status_change=to_naive(now),
+                    # 상태 변경 시간 None으로 설정 (오늘 아직 이벤트 없음)
+                    last_status_change=None,
                     updated_at=to_naive(now)
                     # is_cam_on은 실제 카메라 상태이므로 유지
                 )
