@@ -33,6 +33,7 @@ class SlackListener:
         self.last_event_times: Dict[Tuple[int, str], float] = {}
         self.duplicate_threshold = 0.01
         self.student_cache: Dict[str, int] = {}
+        self.logged_match_failures: set = set()  # 이미 로그 출력한 매칭 실패 이름들
 
         # 폴링 메커니즘 (Socket Mode 누락 메시지 보완)
         self.last_poll_timestamp = datetime.now().timestamp()
@@ -44,17 +45,24 @@ class SlackListener:
         self.processing_pending = False
         
         self.role_keywords = {
-            "조교", "주강사", "멘토", "매니저",
+            "조교", "주강사", "멘토", "매니저", "코치",
             "개발자", "학생", "수강생", "교육생",
-            "강사", "관리자", "운영자", "팀장",
+            "강사", "관리자", "운영자", "팀장", "회장",
             "강의", "실습", "프로젝트", "팀"
         }
         self.ignore_keywords: List[str] = self._load_ignore_keywords()
         
+        # 한글 패턴
         self.pattern_cam_on = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:켰습니다|on\s*되었습니다)")
         self.pattern_cam_off = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님(?:의|이)?\s*카메라(?:를|가)\s*(?:껐습니다|off\s*되었습니다)")
         self.pattern_leave = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님이?\s*.*(퇴장|접속\s*종료|접속을\s*종료|나갔습니다)(?:했습니다)?")
         self.pattern_join = re.compile(r"\*?([^\s\[\]:]+?)\*?\s*님이?\s*.*(입장|접속했습니다|들어왔습니다)")
+
+        # 영어 패턴 추가
+        self.pattern_cam_on_en = re.compile(r"([^\s\[\]:]+?)\s*'?s?\s*camera\s*has\s*been\s*turned\s*on", re.IGNORECASE)
+        self.pattern_cam_off_en = re.compile(r"([^\s\[\]:]+?)\s*'?s?\s*camera\s*has\s*been\s*turned\s*off", re.IGNORECASE)
+        self.pattern_join_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:entered|joined|connected)", re.IGNORECASE)
+        self.pattern_leave_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:left|exited|disconnected)", re.IGNORECASE)
         
         self._setup_handlers()
     
@@ -98,6 +106,9 @@ class SlackListener:
         if not zep_name:  # None 또는 빈 문자열 체크
             return ""
 
+        # 먼저 * 제거 (Slack 강조 표시)
+        zep_name = zep_name.strip('*').strip()
+
         # 구분자 확대: /_-|공백 + .()@{}[]
         parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
         parts = [part.strip() for part in parts if part.strip()]
@@ -105,7 +116,10 @@ class SlackListener:
         korean_parts = []
         for part in parts:
             if any('\uAC00' <= char <= '\uD7A3' for char in part):
-                korean_parts.append(part)
+                # 한글이 포함된 part에서 숫자 제거 (예: "14김오즈" -> "김오즈")
+                korean_only = ''.join(c for c in part if '\uAC00' <= c <= '\uD7A3')
+                if korean_only:
+                    korean_parts.append(korean_only)
 
         filtered = [part for part in korean_parts if part not in self.role_keywords]
 
@@ -124,14 +138,20 @@ class SlackListener:
         if not zep_name:  # None 또는 빈 문자열 체크
             return []
 
-        # 구분자 확대: /_-|공백 + .()@{}[]
-        parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
+        # 먼저 * 제거 (Slack 강조 표시)
+        zep_name = zep_name.strip('*').strip()
+
+        # 구분자 확대: /_-|공백 + .()@{}[]!
+        parts = re.split(r'[/_\-|\s.()@{}\[\]!]+', zep_name.strip())
         parts = [part.strip() for part in parts if part.strip()]
 
         korean_parts = []
         for part in parts:
             if any('\uAC00' <= char <= '\uD7A3' for char in part):
-                korean_parts.append(part)
+                # 한글이 포함된 part에서 숫자 제거 (예: "14김오즈" -> "김오즈")
+                korean_only = ''.join(c for c in part if '\uAC00' <= c <= '\uD7A3')
+                if korean_only:
+                    korean_parts.append(korean_only)
 
         filtered = [part for part in korean_parts if part not in self.role_keywords]
         target_parts = filtered if filtered else korean_parts
@@ -219,8 +239,9 @@ class SlackListener:
                     return
             
             message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
-            
-            match_on = self.pattern_cam_on.search(text)
+
+            # 카메라 ON (한글 + 영어)
+            match_on = self.pattern_cam_on.search(text) or self.pattern_cam_on_en.search(text)
             if match_on:
                 zep_name_raw = match_on.group(1)
                 if self._should_ignore_name(zep_name_raw):
@@ -229,7 +250,8 @@ class SlackListener:
                 await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
-            match_off = self.pattern_cam_off.search(text)
+            # 카메라 OFF (한글 + 영어)
+            match_off = self.pattern_cam_off.search(text) or self.pattern_cam_off_en.search(text)
             if match_off:
                 zep_name_raw = match_off.group(1)
                 if self._should_ignore_name(zep_name_raw):
@@ -238,7 +260,8 @@ class SlackListener:
                 await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
-            match_leave = self.pattern_leave.search(text)
+            # 퇴장 (한글 + 영어)
+            match_leave = self.pattern_leave.search(text) or self.pattern_leave_en.search(text)
             if match_leave:
                 zep_name_raw = match_leave.group(1)
                 if self._should_ignore_name(zep_name_raw):
@@ -247,7 +270,8 @@ class SlackListener:
                 await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
-            match_join = self.pattern_join.search(text)
+            # 입장 (한글 + 영어)
+            match_join = self.pattern_join.search(text) or self.pattern_join_en.search(text)
             if match_join:
                 zep_name_raw = match_join.group(1)
                 if self._should_ignore_name(zep_name_raw):
@@ -288,8 +312,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 카메라 ON] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 카메라 ON] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
@@ -298,7 +326,9 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, True, message_timestamp, is_restoring=self.is_restoring)
+            # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
+            timestamp_to_use = message_timestamp if add_to_joined_today else None
+            success = await self.db_service.update_camera_status(matched_name, True, timestamp_to_use, is_restoring=self.is_restoring)
 
             if not success:
                 return
@@ -347,8 +377,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 카메라 OFF] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 카메라 OFF] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
@@ -356,7 +390,9 @@ class SlackListener:
             
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
+            # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
+            timestamp_to_use = message_timestamp if add_to_joined_today else None
+            success = await self.db_service.update_camera_status(matched_name, False, timestamp_to_use, is_restoring=self.is_restoring)
 
             if not success:
                 return
@@ -408,8 +444,12 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 입장] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 입장] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_join", message_ts):
@@ -419,7 +459,9 @@ class SlackListener:
                 self.joined_students_today.add(student_id)
 
             await self.db_service.clear_absent_status(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
+            # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
+            timestamp_to_use = message_timestamp if add_to_joined_today else None
+            success = await self.db_service.update_camera_status(matched_name, False, timestamp_to_use, is_restoring=self.is_restoring)
 
             # 상태 변경 로그
             if success:
@@ -436,7 +478,7 @@ class SlackListener:
         except Exception as e:
             logger.error(f"[입장 처리 실패] ZEP: {zep_name_raw}, 오류: {e}", exc_info=True)
     
-    async def _handle_user_leave(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0):
+    async def _handle_user_leave(self, zep_name_raw: str, zep_name: str, message_timestamp: Optional[datetime] = None, message_ts: float = 0, add_to_joined_today: bool = True):
         try:
             student_id = None
             matched_name = zep_name
@@ -472,15 +514,23 @@ class SlackListener:
                             self.student_cache[name] = student_id
 
             if not student_id:
-                logger.warning(f"[매칭 실패 - 퇴장] ZEP 이름: '{zep_name_raw}'")
-                logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
+                # 중복 로그 방지: 같은 이름은 한 번만 로그 (* 제거 후 비교)
+                normalized_name = zep_name_raw.strip('*').strip()
+                if normalized_name not in self.logged_match_failures:
+                    self.logged_match_failures.add(normalized_name)
+                    logger.warning(f"[매칭 실패 - 퇴장] ZEP 이름: '{zep_name_raw}'")
+                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_leave", message_ts):
                 return
 
-            await self.db_service.record_user_leave(student_id)
-            success = await self.db_service.update_camera_status(matched_name, False, message_timestamp, is_restoring=self.is_restoring)
+            # 오늘 이벤트만 퇴장 시간 기록
+            if add_to_joined_today:
+                await self.db_service.record_user_leave(student_id)
+            # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
+            timestamp_to_use = message_timestamp if add_to_joined_today else None
+            success = await self.db_service.update_camera_status(matched_name, False, timestamp_to_use, is_restoring=self.is_restoring)
 
             # 상태 변경 로그
             if success:
@@ -522,7 +572,8 @@ class SlackListener:
             self.is_restoring = True
             self.joined_students_today.clear()
             self.last_event_times.clear()
-            
+            self.logged_match_failures.clear()  # 매칭 실패 로그 기록 초기화
+
             await self._refresh_student_cache()
             
             # monitor_service의 reset_time 사용 (UTC 기준)
@@ -604,8 +655,9 @@ class SlackListener:
                 text = message.get("text", "")
                 message_ts = float(message.get("ts", 0))
                 message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
-                
-                match_on = self.pattern_cam_on.search(text)
+
+                # 카메라 ON (한글 + 영어)
+                match_on = self.pattern_cam_on.search(text) or self.pattern_cam_on_en.search(text)
                 if match_on:
                     zep_name_raw = match_on.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
@@ -614,8 +666,9 @@ class SlackListener:
                     camera_on_count += 1
                     processed_count += 1
                     continue
-                
-                match_off = self.pattern_cam_off.search(text)
+
+                # 카메라 OFF (한글 + 영어)
+                match_off = self.pattern_cam_off.search(text) or self.pattern_cam_off_en.search(text)
                 if match_off:
                     zep_name_raw = match_off.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
@@ -624,17 +677,20 @@ class SlackListener:
                     camera_off_count += 1
                     processed_count += 1
                     continue
-                
-                match_leave = self.pattern_leave.search(text)
+
+                # 퇴장 (한글 + 영어)
+                match_leave = self.pattern_leave.search(text) or self.pattern_leave_en.search(text)
                 if match_leave:
                     zep_name_raw = match_leave.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
-                    await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
+                    add_to_joined = message_ts >= today_reset_ts
+                    await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     leave_count += 1
                     processed_count += 1
                     continue
-                
-                match_join = self.pattern_join.search(text)
+
+                # 입장 (한글 + 영어)
+                match_join = self.pattern_join.search(text) or self.pattern_join_en.search(text)
                 if match_join:
                     zep_name_raw = match_join.group(1)
                     zep_name = self._extract_name_only(zep_name_raw)
