@@ -55,30 +55,47 @@ class DiscordBot(commands.Bot):
     
     def _extract_name_only(self, zep_name: str) -> str:
         """
-        ZEP 이름에서 실제 이름만 추출 (다양한 구분자 지원)
-        SlackListener와 동일한 로직 사용
-        
+        ZEP 이름에서 실제 이름만 추출 (SlackListener와 동일한 로직)
+
         Args:
             zep_name: ZEP 이름
-            
+
         Returns:
             한글이 포함된 이름 부분만 반환
         """
-        # 다양한 구분자로 분리: /, _, -, 공백 등
-        parts = re.split(r'[/_\-|\s]+', zep_name.strip())
+        if not zep_name:
+            return ""
+
+        # 먼저 * 제거 (Slack 강조 표시)
+        zep_name = zep_name.strip('*').strip()
+
+        # 구분자 확대: /_-|공백 + .()@{}[]*
+        parts = re.split(r'[/_\-|\s.()@{}\[\]\*]+', zep_name.strip())
         parts = [part.strip() for part in parts if part.strip()]
-        
-        # 한글이 포함된 부분 찾기
+
+        korean_parts = []
         for part in parts:
-            # 한글 유니코드 범위: 가-힣
             if any('\uAC00' <= char <= '\uD7A3' for char in part):
-                return part
-        
-        # 한글이 없으면 첫 번째 부분 반환 (기본값)
-        if parts:
-            return parts[0]
-        
-        # 빈 문자열이면 그대로 반환
+                # 한글이 포함된 part에서 숫자 제거
+                korean_only = ''.join(c for c in part if '\uAC00' <= c <= '\uD7A3')
+                if korean_only:
+                    korean_parts.append(korean_only)
+
+        # 역할 키워드 목록 (SlackListener와 동일)
+        role_keywords = {
+            "조교", "주강사", "멘토", "매니저", "코치",
+            "개발자", "학생", "수강생", "교육생",
+            "강사", "관리자", "운영자", "팀장", "회장",
+            "강의", "실습", "프로젝트", "팀"
+        }
+
+        filtered = [part for part in korean_parts if part not in role_keywords]
+
+        if filtered:
+            return filtered[-1]
+        elif korean_parts:
+            return korean_parts[-1]
+
         return zep_name.strip()
 
     def _is_student_pattern(self, name: str) -> bool:
