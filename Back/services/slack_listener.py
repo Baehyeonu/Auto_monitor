@@ -40,6 +40,10 @@ class SlackListener:
         self.polling_interval = 5  # 5초마다 폴링
         self.polling_task = None
 
+        # 주기적 동기화 (10분마다 전체 상태 재동기화)
+        self.periodic_sync_interval = 600  # 10분
+        self.periodic_sync_task = None
+
         # 초기화 중 이벤트 큐
         self.pending_events: Queue = Queue()
         self.processing_pending = False
@@ -109,8 +113,8 @@ class SlackListener:
         # 먼저 * 제거 (Slack 강조 표시)
         zep_name = zep_name.strip('*').strip()
 
-        # 구분자 확대: /_-|공백 + .()@{}[]
-        parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
+        # 구분자 확대: /_-|공백 + .()@{}[]*
+        parts = re.split(r'[/_\-|\s.()@{}\[\]\*]+', zep_name.strip())
         parts = [part.strip() for part in parts if part.strip()]
 
         korean_parts = []
@@ -141,8 +145,8 @@ class SlackListener:
         # 먼저 * 제거 (Slack 강조 표시)
         zep_name = zep_name.strip('*').strip()
 
-        # 구분자 확대: /_-|공백 + .()@{}[]!
-        parts = re.split(r'[/_\-|\s.()@{}\[\]!]+', zep_name.strip())
+        # 구분자 확대: /_-|공백 + .()@{}[]!*
+        parts = re.split(r'[/_\-|\s.()@{}\[\]!\*]+', zep_name.strip())
         parts = [part.strip() for part in parts if part.strip()]
 
         korean_parts = []
@@ -760,6 +764,10 @@ class SlackListener:
             self.polling_task = asyncio.create_task(self._poll_missing_messages())
             logger.info(f"[폴링 시작] {self.polling_interval}초 간격으로 누락 메시지 체크")
 
+            # 주기 동기화 태스크 시작 (백그라운드)
+            self.periodic_sync_task = asyncio.create_task(self._periodic_sync())
+            logger.info(f"[주기 동기화 시작] {self.periodic_sync_interval // 60}분 간격으로 상태 재동기화")
+
             await self.handler.start_async()
         except Exception as e:
             raise
@@ -829,12 +837,37 @@ class SlackListener:
                 logger.error(f"[폴링 오류] {e}", exc_info=True)
                 await asyncio.sleep(5)  # 오류 발생 시 5초 대기
 
+    async def _periodic_sync(self):
+        """10분마다 전체 상태 동기화 (빠른 연속 이벤트 누락 방지)"""
+        while True:
+            try:
+                await asyncio.sleep(self.periodic_sync_interval)
+
+                logger.info("[주기 동기화] 시작 - 최근 1시간 메시지 재동기화")
+
+                # 최근 1시간만 동기화 (빠른 이벤트 처리 위주)
+                await self.restore_state_from_history(lookback_hours=1)
+
+                logger.info("[주기 동기화] 완료")
+
+            except Exception as e:
+                logger.error(f"[주기 동기화 오류] {e}", exc_info=True)
+                await asyncio.sleep(60)  # 오류 발생 시 1분 후 재시도
+
     async def stop(self):
         # 폴링 태스크 종료
         if self.polling_task and not self.polling_task.done():
             self.polling_task.cancel()
             try:
                 await self.polling_task
+            except asyncio.CancelledError:
+                pass
+
+        # 주기 동기화 태스크 종료
+        if self.periodic_sync_task and not self.periodic_sync_task.done():
+            self.periodic_sync_task.cancel()
+            try:
+                await self.periodic_sync_task
             except asyncio.CancelledError:
                 pass
 
