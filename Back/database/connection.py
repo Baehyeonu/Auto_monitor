@@ -64,6 +64,14 @@ async def init_db():
                 await conn.execute(text("ALTER TABLE students ADD COLUMN scheduled_status_type VARCHAR(20)"))
             if "scheduled_status_time" not in columns:
                 await conn.execute(text("ALTER TABLE students ADD COLUMN scheduled_status_time DATETIME"))
+
+            # 상태 추가 정보 (슬랙 파싱용)
+            if "status_reason" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_reason VARCHAR(200)"))
+            if "status_end_date" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_end_date DATETIME"))
+            if "status_protected" not in columns:
+                await conn.execute(text("ALTER TABLE students ADD COLUMN status_protected BOOLEAN DEFAULT 0"))
         else:
             # PostgreSQL의 경우
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE"))
@@ -71,4 +79,7 @@ async def init_db():
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_set_at TIMESTAMP"))
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS alarm_blocked_until TIMESTAMP"))
             await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_auto_reset_date TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_reason VARCHAR(200)"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_end_date TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE students ADD COLUMN IF NOT EXISTS status_protected BOOLEAN DEFAULT FALSE"))
 

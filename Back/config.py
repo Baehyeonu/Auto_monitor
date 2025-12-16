@@ -16,7 +16,12 @@ class Config(BaseSettings):
     SLACK_BOT_TOKEN: str
     SLACK_APP_TOKEN: str
     SLACK_CHANNEL_ID: str
-    
+
+    # 상태 자동 변경 (슬랙 파싱)
+    SLACK_STATUS_CHANNEL_ID: Optional[str] = None
+    STATUS_PARSING_ENABLED: bool = False
+    STATUS_CAMP_FILTER: Optional[str] = None
+
     CAMERA_OFF_THRESHOLD: int = 20
     ALERT_COOLDOWN: int = 60
     CHECK_INTERVAL: int = 60

@@ -8,6 +8,7 @@ import { ScreenMonitorSettings } from '@/components/settings/ScreenMonitorSettin
 import { DatabaseSettings } from '@/components/settings/DatabaseSettings'
 import { ResetSettings } from '@/components/settings/ResetSettings'
 import { IgnoreKeywordsSettings } from '@/components/settings/IgnoreKeywordsSettings'
+import { StatusParsingSettings } from '@/components/settings/StatusParsingSettings'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 
@@ -46,6 +47,7 @@ export default function SettingsPage() {
         <ResetSettings settings={settings} />
         <DatabaseSettings />
         <IgnoreKeywordsSettings />
+        <StatusParsingSettings />
       </div>
       <DiscordSyncSettings />
     </div>

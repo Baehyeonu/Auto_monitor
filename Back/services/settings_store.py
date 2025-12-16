@@ -17,6 +17,8 @@ PERSISTED_FIELDS: Dict[str, str] = {
     "lunch_start_time": "LUNCH_START_TIME",
     "lunch_end_time": "LUNCH_END_TIME",
     "daily_reset_time": "DAILY_RESET_TIME",
+    "status_parsing_enabled": "STATUS_PARSING_ENABLED",
+    "status_camp_filter": "STATUS_CAMP_FILTER",
 }
 
 SETTINGS_FILE = Path(__file__).parent.parent / "data" / "settings.json"
