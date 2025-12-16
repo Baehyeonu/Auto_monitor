@@ -1124,26 +1124,31 @@ class SlackListener:
             if match_reason:
                 reason = match_reason.group(1).strip()
 
-            # Step 8: 적용 시간 계산
+            # Step 8: 적용 시간 계산 (예약 로직)
             from zoneinfo import ZoneInfo
             SEOUL_TZ = ZoneInfo("Asia/Seoul")
+            now_seoul = datetime.now(SEOUL_TZ)
+            today = now_seoul.date()
 
             scheduled_utc = None
 
-            # 휴가/결석/지각: 즉시 적용 (status_time = None)
-            # 조퇴/외출: 시간 있으면 예약, 없으면 즉시
-            if status_type in ['absence', 'vacation', 'tardy']:
-                # 휴가/결석/지각: 즉시 적용
-                scheduled_utc = None
-            elif status_type in ['early_leave', 'leave'] and time_str:
-                # 조퇴/외출: 특정 시간에 예약
+            # 날짜 기반 예약 판단
+            is_future_date = start_date > today
+            is_today = start_date == today
+
+            # 조퇴/외출: 시간이 지정된 경우 해당 시간으로 예약
+            if status_type in ['early_leave', 'leave'] and time_str:
                 hour, minute = map(int, time_str.split(':'))
                 scheduled_dt = datetime.combine(start_date, datetime.min.time())
                 scheduled_dt = scheduled_dt.replace(hour=hour, minute=minute, tzinfo=SEOUL_TZ)
                 scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
-            else:
-                # 시간 정보 없는 조퇴/외출: 즉시 적용
-                scheduled_utc = None
+
+            # 휴가/결석/지각: 미래 날짜면 해당 날짜 00:00으로 예약
+            elif is_future_date:
+                scheduled_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=SEOUL_TZ)
+                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+            # 오늘 날짜이고 시간 정보 없으면 즉시 적용 (scheduled_utc = None)
 
             # Step 9: DB 저장
             protected = status_type in ['absence', 'vacation']  # 결석/휴가는 보호
@@ -1183,7 +1188,9 @@ class SlackListener:
                 end_date=str(end_date) if end_date else None,
                 time=time_str,
                 reason=reason,
-                camp=camp_name
+                camp=camp_name,
+                scheduled_time=scheduled_utc.isoformat() if scheduled_utc else None,
+                is_future_date=is_future_date
             ))
 
         except Exception as e:

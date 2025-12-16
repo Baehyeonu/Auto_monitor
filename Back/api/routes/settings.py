@@ -343,3 +343,127 @@ async def test_status_parsing(data: TestStatusMessageRequest):
         raise HTTPException(status_code=500, detail=f"파싱 실패: {str(e)}")
 
 
+@router.post("/status-confirm/{student_id}")
+async def confirm_status(student_id: int):
+    """
+    예약된 상태를 실제 상태로 적용
+    - scheduled_status_type → status_type
+    - scheduled_status_time → status_set_at
+    - 예약 필드는 초기화
+    """
+    system = await wait_for_system_instance()
+    if not system or not system.db_service:
+        raise HTTPException(status_code=503, detail="시스템이 준비되지 않았습니다.")
+
+    try:
+        from datetime import datetime, timezone
+        from database.models import Student
+        from sqlalchemy import update
+        from database.connection import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            # 학생 조회
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Student).where(Student.id == student_id)
+            )
+            student = result.scalar_one_or_none()
+
+            if not student:
+                raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+
+            if not student.scheduled_status_type:
+                raise HTTPException(status_code=400, detail="예약된 상태가 없습니다.")
+
+            # 예약된 상태를 실제 상태로 적용
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            update_values = {
+                "status_type": student.scheduled_status_type,
+                "status_set_at": student.scheduled_status_time or now,
+                "status_end_date": student.status_end_date,  # 이미 설정된 종료일 유지
+                "status_protected": student.status_protected or False,
+                # 예약 필드 초기화
+                "scheduled_status_type": None,
+                "scheduled_status_time": None,
+                "updated_at": now
+            }
+
+            await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .values(**update_values)
+            )
+            await session.commit()
+
+            return {
+                "success": True,
+                "message": f"{student.zep_name}의 상태가 적용되었습니다.",
+                "status_type": student.scheduled_status_type
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상태 적용 실패: {str(e)}")
+
+
+@router.post("/status-rollback/{student_id}")
+async def rollback_status(student_id: int):
+    """
+    예약된 상태를 취소
+    - scheduled_status_type = None
+    - scheduled_status_time = None
+    - status_reason = None
+    """
+    system = await wait_for_system_instance()
+    if not system or not system.db_service:
+        raise HTTPException(status_code=503, detail="시스템이 준비되지 않았습니다.")
+
+    try:
+        from datetime import datetime, timezone
+        from database.models import Student
+        from sqlalchemy import update
+        from database.connection import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            # 학생 조회
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Student).where(Student.id == student_id)
+            )
+            student = result.scalar_one_or_none()
+
+            if not student:
+                raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+
+            # 예약 필드 초기화
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            update_values = {
+                "scheduled_status_type": None,
+                "scheduled_status_time": None,
+                "status_reason": None,
+                "status_end_date": None,
+                "status_protected": False,
+                "updated_at": now
+            }
+
+            await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .values(**update_values)
+            )
+            await session.commit()
+
+            return {
+                "success": True,
+                "message": f"{student.zep_name}의 예약된 상태가 취소되었습니다."
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"상태 취소 실패: {str(e)}")
+
+
