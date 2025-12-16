@@ -238,26 +238,19 @@ class SlackListener:
             message_ts = float(message_ts_str) if message_ts_str else 0
             subtype = message.get("subtype", "")
 
-            # 디버그: 모든 메시지 로그
-            logger.info(f"[Slack 메시지 수신] 채널: {channel}, subtype: {subtype}, 텍스트: {text[:50] if text else '(없음)'}...")
+            # message_changed, message_deleted 등의 이벤트는 조용히 무시
+            # (메시지 수정/삭제는 처리하지 않음)
+            if subtype in ["message_changed", "message_deleted", "message_replied"]:
+                return
 
             # 기존 채널: 카메라/입장/퇴장
             if channel == config.SLACK_CHANNEL_ID:
-                logger.info(f"[일반 채널] 메시지 처리 시작")
                 asyncio.create_task(self._process_message_async(text, message_ts))
 
             # 상태 채널: 조퇴/외출/결석/휴가
             elif (config.STATUS_PARSING_ENABLED and
                   channel == config.SLACK_STATUS_CHANNEL_ID):
-                logger.info(f"[상태 채널] 메시지 파싱 시작 - {text[:100] if text else '(없음)'}")
                 asyncio.create_task(self._process_status_message(text, message_ts))
-            else:
-                # 설정값 디버깅
-                if channel not in [config.SLACK_CHANNEL_ID, config.SLACK_STATUS_CHANNEL_ID]:
-                    logger.debug(f"[무시된 채널] {channel} - 설정된 채널이 아님")
-                    logger.debug(f"  설정: SLACK_CHANNEL_ID={config.SLACK_CHANNEL_ID}, "
-                               f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}, "
-                               f"STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}")
         except Exception as e:
             logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
     
