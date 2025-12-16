@@ -70,13 +70,13 @@ class SlackListener:
 
         # 상태 파싱 패턴 (OZ헬프센터용)
         # * 는 Slack 볼드체이므로 모든 패턴에서 선택적으로 매치
-        # 영문 이모지 코드도 함께 지원 (palm_tree 등)
-        self.pattern_status_header = re.compile(r':(?:큰_보라색_원|빨간색_원|야자수|큰_주황색_원|큰_노란색_원|palm_tree|large_purple_circle|red_circle|large_orange_circle|large_yellow_circle):\s*\*?(조퇴|결석|휴가|외출|지각)\*?')
-        self.pattern_camp_name = re.compile(r':(?:클립보드|clipboard):\s*\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\n|$)')
-        self.pattern_single_date = re.compile(r':(?:날짜|date):\s*\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_date_range = re.compile(r':(?:날짜|date):\s*\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_time_single = re.compile(r':시계_\d시:\s*\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
-        self.pattern_reason = re.compile(r':(?:말풍선|speech_balloon):\s*\*?(.+?)\*?(?:\n|$)')
+        # 유니코드 이모지 + Slack 이모지 코드 모두 지원
+        self.pattern_status_header = re.compile(r'(?::(?:큰_보라색_원|빨간색_원|야자수|큰_주황색_원|큰_노란색_원|palm_tree|large_purple_circle|red_circle|large_orange_circle|large_yellow_circle):|🟣|🔴|🌴|🟠|🟡)\s*\*?(조퇴|결석|휴가|외출|지각)\*?')
+        self.pattern_camp_name = re.compile(r'(?::(?:클립보드|clipboard):|📋)\s*\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\n|$)')
+        self.pattern_single_date = re.compile(r'(?::(?:날짜|date):|📅)\s*\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
+        self.pattern_date_range = re.compile(r'(?::(?:날짜|date):|📅)\s*\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
+        self.pattern_time_single = re.compile(r'(?::시계_\d시:|🕐|🕑|🕒|🕓|🕔|🕕|🕖|🕗|🕘|🕙|🕚|🕛)\s*\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
+        self.pattern_reason = re.compile(r'(?::(?:말풍선|speech_balloon):|💬)\s*\*?(.+?)\*?(?:\n|$)')
 
         # 상태 타입 매핑
         self.status_type_map = {
@@ -775,7 +775,8 @@ class SlackListener:
             # 상태 채널 메시지 처리
             status_processed_count = 0
             for message in status_messages:
-                text = message.get("text", "")
+                # blocks에서 텍스트 추출 (Slack blocks 형식)
+                text = self._extract_text_from_blocks(message)
                 message_ts = float(message.get("ts", 0))
                 await self._process_status_message(text, message_ts)
                 status_processed_count += 1
@@ -959,12 +960,14 @@ class SlackListener:
 
                         status_processed_count = 0
                         for msg in status_messages:
-                            text = msg.get("text", "")
                             message_ts = float(msg.get("ts", 0))
 
                             # 이미 처리한 메시지는 스킵
                             if message_ts <= self.last_poll_timestamp:
                                 continue
+
+                            # blocks에서 텍스트 추출 (Slack blocks 형식)
+                            text = self._extract_text_from_blocks(msg)
 
                             # 상태 메시지 처리 (일반 메시지도 처리, subtype 체크 안함)
                             await self._process_status_message(text, message_ts)
@@ -996,6 +999,35 @@ class SlackListener:
             except Exception as e:
                 logger.error(f"[주기 동기화 오류] {e}", exc_info=True)
                 await asyncio.sleep(60)  # 오류 발생 시 1분 후 재시도
+
+    def _extract_text_from_blocks(self, message: dict) -> str:
+        """Slack blocks에서 텍스트 추출"""
+        # blocks가 있으면 blocks에서 추출
+        blocks = message.get("blocks", [])
+        if blocks:
+            text_parts = []
+            for block in blocks:
+                block_type = block.get("type")
+
+                # section 블록
+                if block_type == "section":
+                    if "text" in block:
+                        text_parts.append(block["text"].get("text", ""))
+                    if "fields" in block:
+                        for field in block["fields"]:
+                            text_parts.append(field.get("text", ""))
+
+                # context 블록
+                elif block_type == "context":
+                    elements = block.get("elements", [])
+                    for elem in elements:
+                        if elem.get("type") == "mrkdwn":
+                            text_parts.append(elem.get("text", ""))
+
+            return "\n".join(text_parts)
+
+        # blocks가 없으면 일반 text 사용
+        return message.get("text", "")
 
     async def _process_status_message(self, text: str, message_ts: float):
         """OZ헬프센터 상태 메시지 파싱"""
