@@ -68,7 +68,10 @@ async def get_settings():
         "daily_reset_time": config.DAILY_RESET_TIME,
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
-        "admin_count": len(admins)
+        "admin_count": len(admins),
+        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
+        "status_camp_filter": config.STATUS_CAMP_FILTER,
+        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
     }
 
 
@@ -100,6 +103,10 @@ async def update_settings(data: SettingsUpdate):
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
         updated_fields['daily_reset_time'] = data.daily_reset_time
+    if data.status_parsing_enabled is not None:
+        config.STATUS_PARSING_ENABLED = data.status_parsing_enabled
+    if data.status_camp_filter is not None:
+        config.STATUS_CAMP_FILTER = data.status_camp_filter
 
     save_persisted_settings(config)
 
@@ -122,7 +129,10 @@ async def update_settings(data: SettingsUpdate):
         "daily_reset_time": config.DAILY_RESET_TIME,
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
-        "admin_count": len(admins)
+        "admin_count": len(admins),
+        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
+        "status_camp_filter": config.STATUS_CAMP_FILTER,
+        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
     }
 
 
@@ -267,7 +277,69 @@ async def update_ignore_keywords(data: IgnoreKeywordsUpdate):
     system = await wait_for_system_instance(timeout=2)
     if system and system.slack_listener:
         system.slack_listener.ignore_keywords = [kw.lower() for kw in data.keywords if kw]
-    
+
     return {"keywords": existing_data["ignore_keywords"]}
+
+
+@router.post("/status-rollback/{student_id}")
+async def rollback_status_change(student_id: int):
+    """상태 변경 취소 (확인 팝업에서 '취소' 버튼)"""
+    try:
+        # 학생 조회
+        student = await DBService.get_student_by_id(student_id)
+        if not student:
+            raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+
+        # 상태 제거 (None으로 설정)
+        success = await DBService.set_student_status(
+            student_id=student_id,
+            status_type=None,
+            status_time=None,
+            reason=None,
+            end_date=None,
+            protected=False
+        )
+
+        if not success:
+            raise HTTPException(status_code=400, detail="상태 롤백에 실패했습니다.")
+
+        # 대시보드 업데이트 브로드캐스트
+        system = await wait_for_system_instance(timeout=2)
+        if system and system.monitor_service:
+            await system.monitor_service.broadcast_dashboard_update_now()
+
+        return {"success": True, "message": "상태 변경이 취소되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"롤백 실패: {str(e)}")
+
+
+class TestStatusMessageRequest(BaseModel):
+    text: str
+
+
+@router.post("/test-status-parsing")
+async def test_status_parsing(data: TestStatusMessageRequest):
+    """상태 파싱 테스트용 엔드포인트 (curl로 테스트 가능)"""
+    system = await wait_for_system_instance(timeout=5)
+
+    if not system:
+        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다.")
+
+    if not system.slack_listener:
+        raise HTTPException(status_code=503, detail="Slack 리스너가 실행 중이 아닙니다.")
+
+    try:
+        import time
+        # 현재 timestamp 생성
+        message_ts = time.time()
+
+        # Slack 리스너의 파싱 메서드 직접 호출
+        await system.slack_listener._process_status_message(data.text, message_ts)
+
+        return {"success": True, "message": "파싱 요청을 처리했습니다. 로그를 확인하세요."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"파싱 실패: {str(e)}")
 
 

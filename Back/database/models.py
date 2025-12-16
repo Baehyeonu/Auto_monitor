@@ -50,7 +50,12 @@ class Student(Base):
     # 예약된 상태 (시간이 되면 자동으로 status_type으로 변경)
     scheduled_status_type = Column(String(20), nullable=True)  # 예약된 상태 타입
     scheduled_status_time = Column(DateTime, nullable=True, index=True)  # 예약된 상태 적용 시간
-    
+
+    # 상태 추가 정보 (슬랙 파싱용)
+    status_reason = Column(String(200), nullable=True)  # 상태 사유 (예: "병원내원", "개인사정")
+    status_end_date = Column(DateTime, nullable=True)  # 결석/휴가 종료일
+    status_protected = Column(Boolean, default=False)  # 초기화 방지 플래그 (결석/휴가 시 True)
+
     # 생성/수정 시간
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

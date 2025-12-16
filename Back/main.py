@@ -192,7 +192,39 @@ class ZepMonitoringSystem:
             
             from api.server import app
             app.state.system_instance = self
-            
+
+            # Uvicorn 로깅 필터 설정 (health check 로그 제한)
+            import logging
+            from datetime import datetime, timedelta
+
+            class HealthCheckFilter(logging.Filter):
+                """헬스 체크 로그를 1시간에 1회만 출력하는 필터"""
+                def __init__(self):
+                    super().__init__()
+                    self.last_log_time = None
+
+                def filter(self, record):
+                    # /health 엔드포인트가 아니면 모두 허용
+                    if not hasattr(record, 'args') or not record.args:
+                        return True
+
+                    # 로그 메시지에서 /health 체크
+                    msg = str(record.getMessage())
+                    if 'GET /health' not in msg:
+                        return True
+
+                    # /health 엔드포인트는 1시간에 1회만 로그
+                    now = datetime.now()
+                    if self.last_log_time is None or (now - self.last_log_time) >= timedelta(hours=1):
+                        self.last_log_time = now
+                        return True
+
+                    return False
+
+            # Uvicorn access 로거에 필터 추가
+            uvicorn_logger = logging.getLogger("uvicorn.access")
+            uvicorn_logger.addFilter(HealthCheckFilter())
+
             api_config = uvicorn.Config(
                 app,
                 host="0.0.0.0",

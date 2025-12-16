@@ -3,8 +3,8 @@
 """
 import re
 import logging
-from typing import Optional, List
-from datetime import datetime, timedelta, timezone
+from typing import Optional, List, Union
+from datetime import datetime, timedelta, timezone, date
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -563,14 +563,18 @@ class DBService:
         (학생 등록 정보는 유지)
 
         카메라 상태와 실제 이벤트 시간은 유지하고, 알림/응답/외출/상태 관련 필드만 리셋합니다.
+        단, status_protected=True인 학생(결석/휴가 등)은 상태를 유지합니다.
 
         Returns:
             초기화 시간 (datetime)
         """
         async with AsyncSessionLocal() as session:
             now = utcnow()
+
+            # 보호되지 않은 학생들만 초기화
             await session.execute(
                 update(Student)
+                .where(Student.status_protected != True)  # status_protected가 False이거나 None인 경우
                 .values(
                     # 알림 관련 필드 리셋
                     last_alert_sent=None,
@@ -587,6 +591,8 @@ class DBService:
                     status_set_at=None,
                     alarm_blocked_until=None,
                     status_auto_reset_date=None,
+                    status_reason=None,
+                    status_end_date=None,
                     # 퇴장 시간 리셋 (일일 초기화 시 전날 퇴장 기록 제거)
                     last_leave_time=None,
                     # 상태 변경 시간 None으로 설정 (오늘 아직 이벤트 없음)
@@ -595,6 +601,26 @@ class DBService:
                     # is_cam_on은 실제 카메라 상태이므로 유지
                 )
             )
+
+            # 보호된 학생들은 알림 관련 필드만 리셋 (상태는 유지)
+            await session.execute(
+                update(Student)
+                .where(Student.status_protected == True)
+                .values(
+                    # 알림 관련 필드만 리셋
+                    last_alert_sent=None,
+                    alert_count=0,
+                    response_status=None,
+                    response_time=None,
+                    last_absent_alert=None,
+                    last_leave_admin_alert=None,
+                    last_return_request_time=None,
+                    alarm_blocked_until=None,
+                    updated_at=to_naive(now)
+                    # status_type, status_reason, status_end_date는 유지
+                )
+            )
+
             await session.commit()
             return now
     
@@ -1219,16 +1245,26 @@ class DBService:
             return result.rowcount > 0
     
     @staticmethod
-    async def set_student_status(student_id: int, status_type: Optional[str], status_time: Optional[str] = None) -> bool:
+    async def set_student_status(
+        student_id: int,
+        status_type: Optional[str],
+        status_time: Optional[Union[str, datetime]] = None,
+        reason: Optional[str] = None,
+        end_date: Optional[date] = None,
+        protected: bool = False
+    ) -> bool:
         """
         학생 상태 설정 (지각, 외출, 조퇴, 휴가, 결석)
 
         Args:
             student_id: 학생 ID
             status_type: "late", "leave", "early_leave", "vacation", "absence", None (정상)
-            status_time: 선택사항, 상태 변경 시간 "HH:MM" 형식
+            status_time: 선택사항, 상태 변경 시간 "HH:MM" 형식 또는 datetime 객체
                         - 제공되면: 예약으로 저장 (해당 시간에 자동으로 상태 변경)
                         - 제공 안 되면: 즉시 상태 변경
+            reason: 선택사항, 상태 변경 사유 (예: "병원내원", "개인사정")
+            end_date: 선택사항, 결석/휴가 종료일 (date 객체)
+            protected: 초기화 방지 플래그 (결석/휴가 시 True)
 
         Returns:
             업데이트 성공 여부
@@ -1238,33 +1274,41 @@ class DBService:
 
             # status_time이 제공되면 예약으로 처리
             if status_time:
-                from datetime import datetime, time as time_type
+                from datetime import datetime as dt_class, time as time_type
                 try:
-                    # HH:MM 파싱
-                    time_obj = datetime.strptime(status_time, "%H:%M").time()
-                    # 오늘 날짜 + 입력한 시간
-                    from database.db_service import now_seoul, SEOUL_TZ
-                    today_seoul = now_seoul().date()
-                    scheduled_datetime = datetime.combine(today_seoul, time_obj)
-                    # 서울 시간을 UTC로 변환
-                    scheduled_datetime_seoul = scheduled_datetime.replace(tzinfo=SEOUL_TZ)
-                    scheduled_datetime_utc = scheduled_datetime_seoul.astimezone(timezone.utc)
+                    scheduled_datetime_utc = None
 
-                    # 예약으로 저장
-                    update_values = {
-                        "scheduled_status_type": status_type,
-                        "scheduled_status_time": to_naive(scheduled_datetime_utc),
-                        "updated_at": to_naive(now)
-                    }
+                    # datetime 객체인 경우
+                    if isinstance(status_time, datetime):
+                        scheduled_datetime_utc = status_time
+                    # "HH:MM" 문자열인 경우
+                    elif isinstance(status_time, str):
+                        time_obj = dt_class.strptime(status_time, "%H:%M").time()
+                        from database.db_service import now_seoul, SEOUL_TZ
+                        today_seoul = now_seoul().date()
+                        scheduled_datetime = dt_class.combine(today_seoul, time_obj)
+                        scheduled_datetime_seoul = scheduled_datetime.replace(tzinfo=SEOUL_TZ)
+                        scheduled_datetime_utc = scheduled_datetime_seoul.astimezone(timezone.utc)
 
-                    result = await session.execute(
-                        update(Student)
-                        .where(Student.id == student_id)
-                        .values(**update_values)
-                    )
-                    await session.commit()
-                    return result.rowcount > 0
-                except ValueError:
+                    if scheduled_datetime_utc:
+                        # 예약으로 저장
+                        update_values = {
+                            "scheduled_status_type": status_type,
+                            "scheduled_status_time": to_naive(scheduled_datetime_utc),
+                            "status_reason": reason,
+                            "status_end_date": to_naive(datetime.combine(end_date, datetime.min.time())) if end_date else None,
+                            "status_protected": protected,
+                            "updated_at": to_naive(now)
+                        }
+
+                        result = await session.execute(
+                            update(Student)
+                            .where(Student.id == student_id)
+                            .values(**update_values)
+                        )
+                        await session.commit()
+                        return result.rowcount > 0
+                except (ValueError, AttributeError):
                     pass  # 파싱 실패 시 즉시 변경으로 처리
 
             now_naive = to_naive(now)
@@ -1294,6 +1338,9 @@ class DBService:
                 "status_set_at": now_naive if status_type else None,
                 "alarm_blocked_until": alarm_blocked_until,
                 "status_auto_reset_date": status_auto_reset_date,
+                "status_reason": reason,
+                "status_end_date": to_naive(datetime.combine(end_date, datetime.min.time())) if end_date else None,
+                "status_protected": protected,
                 "updated_at": now_naive
             }
 
@@ -1307,9 +1354,12 @@ class DBService:
                     "status_type": None,
                     "status_set_at": None,
                     "alarm_blocked_until": None,
-                    "status_auto_reset_date": None
+                    "status_auto_reset_date": None,
+                    "status_reason": None,
+                    "status_end_date": None,
+                    "status_protected": False
                 })
-            
+
             result = await session.execute(
                 update(Student)
                 .where(Student.id == student_id)

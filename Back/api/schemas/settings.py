@@ -18,6 +18,9 @@ class SettingsResponse(BaseModel):
     discord_connected: bool
     slack_connected: bool
     admin_count: int
+    status_parsing_enabled: bool = False
+    status_camp_filter: Optional[str] = None
+    slack_status_channel_configured: bool = False
 
 
 class SettingsUpdate(BaseModel):
@@ -30,5 +33,7 @@ class SettingsUpdate(BaseModel):
     lunch_start_time: Optional[str] = None
     lunch_end_time: Optional[str] = None
     daily_reset_time: Optional[str] = None
+    status_parsing_enabled: Optional[bool] = None
+    status_camp_filter: Optional[str] = None
 
 

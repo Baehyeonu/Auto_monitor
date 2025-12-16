@@ -134,5 +134,20 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = "DialogDescription"
 
-export { DialogContent, DialogHeader, DialogTitle, DialogDescription }
+const DialogFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 p-6 pt-4",
+      className
+    )}
+    {...props}
+  />
+))
+DialogFooter.displayName = "DialogFooter"
+
+export { DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter }
 

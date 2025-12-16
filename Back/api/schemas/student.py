@@ -48,6 +48,9 @@ class StudentResponse(BaseModel):
     status_set_at: Optional[datetime] = None
     alarm_blocked_until: Optional[datetime] = None
     status_auto_reset_date: Optional[datetime] = None
+    status_reason: Optional[str] = None
+    status_end_date: Optional[datetime] = None
+    status_protected: Optional[bool] = None
     not_joined: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
@@ -59,7 +62,7 @@ class StudentResponse(BaseModel):
             return None
         return str(value)
     
-    @field_serializer('last_status_change', 'last_alert_sent', 'last_leave_time', 'status_set_at', 'alarm_blocked_until', 'status_auto_reset_date', 'created_at', 'updated_at')
+    @field_serializer('last_status_change', 'last_alert_sent', 'last_leave_time', 'status_set_at', 'alarm_blocked_until', 'status_auto_reset_date', 'status_end_date', 'created_at', 'updated_at')
     def serialize_datetime(self, value: Optional[datetime], _info):
         """datetime을 UTC timezone을 포함한 ISO 형식으로 직렬화"""
         if value is None:

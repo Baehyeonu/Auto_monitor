@@ -12,6 +12,9 @@ export interface SettingsResponse {
   slack_connected: boolean
   admin_count: number
   screen_monitor_enabled?: boolean
+  status_parsing_enabled: boolean
+  status_camp_filter: string | null
+  slack_status_channel_configured: boolean
 }
 
 export type SettingsUpdatePayload = Partial<
@@ -26,6 +29,8 @@ export type SettingsUpdatePayload = Partial<
     | 'lunch_start_time'
     | 'lunch_end_time'
     | 'daily_reset_time'
+    | 'status_parsing_enabled'
+    | 'status_camp_filter'
   >
 >
 
@@ -35,5 +40,17 @@ export interface IgnoreKeywordsResponse {
 
 export interface IgnoreKeywordsUpdate {
   keywords: string[]
+}
+
+export interface StatusConfirmationData {
+  student_id: number
+  student_name: string
+  status_type: string
+  status_kr: string
+  start_date: string
+  end_date?: string | null
+  time?: string | null
+  reason?: string | null
+  camp: string
 }
 
