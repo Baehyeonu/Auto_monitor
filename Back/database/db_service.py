@@ -1411,6 +1411,10 @@ class DBService:
             now = utcnow()
             now_naive = to_naive(now)
 
+            # scheduled_time이 아직 안 됐으면 적용하지 않음 (사용자 확인 대기)
+            if student.scheduled_status_time and student.scheduled_status_time > now_naive:
+                return False
+
             # 예약된 상태 가져오기
             status_type = student.scheduled_status_type
 
@@ -1430,7 +1434,7 @@ class DBService:
 
             update_values = {
                 "status_type": status_type,
-                "status_set_at": now_naive,
+                "status_set_at": student.scheduled_status_time or now_naive,  # 예약 시간 사용
                 "alarm_blocked_until": alarm_blocked_until,
                 "status_auto_reset_date": status_auto_reset_date,
                 "scheduled_status_type": None,  # 예약 정보 삭제

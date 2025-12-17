@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 class SlackListener:
     def __init__(self, monitor_service=None):
         self.app = AsyncApp(token=config.SLACK_BOT_TOKEN)
+
+        # 디버그: 모든 이벤트 로깅
+        @self.app.event("message")
+        async def log_all_message_events(event, say):
+            logger.info(f"🔔 [Socket Mode 이벤트 수신] type=message")
+            logger.info(f"   channel={event.get('channel', 'N/A')}")
+            logger.info(f"   subtype={event.get('subtype', 'None')}")
+            logger.info(f"   text={event.get('text', '')[:100]}")
+            logger.info(f"   전체 이벤트: {json.dumps(event, indent=2, ensure_ascii=False)[:500]}")
+
         self.handler = None
         self.db_service = DBService()
         self.monitor_service = monitor_service
@@ -72,11 +82,11 @@ class SlackListener:
         # * 는 Slack 볼드체이므로 모든 패턴에서 선택적으로 매치
         # 유니코드 이모지 + Slack 이모지 코드 모두 지원
         self.pattern_status_header = re.compile(r'(?::(?:큰_보라색_원|빨간색_원|야자수|큰_주황색_원|큰_노란색_원|palm_tree|large_purple_circle|red_circle|large_orange_circle|large_yellow_circle):|🟣|🔴|🌴|🟠|🟡)\s*\*?(조퇴|결석|휴가|외출|지각)\*?')
-        self.pattern_camp_name = re.compile(r'(?::(?:클립보드|clipboard):|📋)\s*\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\n|$)')
-        self.pattern_single_date = re.compile(r'(?::(?:날짜|date):|📅)\s*\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_date_range = re.compile(r'(?::(?:날짜|date):|📅)\s*\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_time_single = re.compile(r'(?::시계_\d시:|🕐|🕑|🕒|🕓|🕔|🕕|🕖|🕗|🕘|🕙|🕚|🕛)\s*\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
-        self.pattern_reason = re.compile(r'(?::(?:말풍선|speech_balloon):|💬)\s*\*?(.+?)\*?(?:\n|$)')
+        self.pattern_camp_name = re.compile(r'(?:(?::(?:클립보드|clipboard):|📋)\s*)?\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\s|$)')
+        self.pattern_single_date = re.compile(r'(?:(?::(?:날짜|date):|📅)\s*)?\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
+        self.pattern_date_range = re.compile(r'(?:(?::(?:날짜|date):|📅)\s*)?\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
+        self.pattern_time_single = re.compile(r'(?:(?::시계_\d시:|🕐|🕑|🕒|🕓|🕔|🕕|🕖|🕗|🕘|🕙|🕚|🕛)\s*)?\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
+        self.pattern_reason = re.compile(r'(?:(?::(?:말풍선|speech_balloon):|💬)\s*)?\*?(.+?)\*?(?:\n|$)')
 
         # 상태 타입 매핑
         self.status_type_map = {
@@ -84,7 +94,7 @@ class SlackListener:
             '외출': 'leave',
             '결석': 'absence',
             '휴가': 'vacation',
-            '지각': 'tardy'
+            '지각': 'late'
         }
 
         # 이벤트 핸들러 등록 (모든 메시지 타입 수신)
@@ -233,10 +243,17 @@ class SlackListener:
         """모든 메시지 핸들러 (일반 메시지 + 봇 메시지)"""
         try:
             channel = message.get("channel", "")
-            text = message.get("text", "")
+            # blocks에서 텍스트 추출 (attachments 포함)
+            text = self._extract_text_from_blocks(message)
             message_ts_str = message.get("ts", "")
             message_ts = float(message_ts_str) if message_ts_str else 0
             subtype = message.get("subtype", "")
+
+            # 디버그: 모든 메시지 로깅
+            logger.info(f"[Slack 메시지 수신] 채널={channel}, subtype={subtype}, text={text[:100] if text else 'None'}")
+
+            # 디버그: 메시지 전체 구조 출력 (채널별 비교용)
+            logger.info(f"[메시지 전체 구조]\n{json.dumps(message, indent=2, ensure_ascii=False)[:2000]}")
 
             # message_changed, message_deleted 등의 이벤트는 조용히 무시
             # (메시지 수정/삭제는 처리하지 않음)
@@ -250,6 +267,7 @@ class SlackListener:
             # 상태 채널: 조퇴/외출/결석/휴가
             elif (config.STATUS_PARSING_ENABLED and
                   channel == config.SLACK_STATUS_CHANNEL_ID):
+                logger.info(f"[상태 채널 메시지] 파싱 시작")
                 asyncio.create_task(self._process_status_message(text, message_ts))
         except Exception as e:
             logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
@@ -652,6 +670,9 @@ class SlackListener:
                 today_reset_ts = oldest_dt.timestamp()
                 oldest_ts = oldest_dt.timestamp()
 
+            print(f"[디버그] oldest_ts={oldest_ts}, oldest_dt={datetime.fromtimestamp(oldest_ts, tz=timezone.utc)}")
+            print(f"[디버그] lookback_hours={lookback_hours}")
+
             messages = []
             cursor = None
 
@@ -680,9 +701,14 @@ class SlackListener:
                 if not cursor:
                     break
 
+            print(f"[디버그] 카메라 채널 조회 완료: {len(messages)}개 메시지")
+
             # 상태 채널 메시지도 조회 (활성화된 경우)
             status_messages = []
             if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
+                # 디버그: 조회 시간 범위 로깅
+                logger.info(f"[상태 채널 조회] oldest_ts={oldest_ts} ({datetime.fromtimestamp(oldest_ts, tz=timezone.utc)})")
+
                 status_cursor = None
                 while True:
                     status_response = await self.app.client.conversations_history(
@@ -706,11 +732,17 @@ class SlackListener:
                     if not status_cursor:
                         break
 
+                print(f"[디버그] 상태 채널 조회 완료: {len(status_messages)}개 메시지")
+
                 if status_messages:
                     status_messages.sort(key=lambda msg: float(msg.get("ts", 0)))
                     logger.info(f"[상태 채널 복원] {len(status_messages)}개 메시지 조회 완료")
 
+            # 디버그: 조회된 메시지 수 로깅
+            logger.info(f"[동기화] 카메라 채널: {len(messages)}개, 상태 채널: {len(status_messages)}개")
+
             if not messages and not status_messages:
+                logger.info("[동기화] 메시지 없음 - 종료")
                 return
             
             messages.sort(key=lambda msg: float(msg.get("ts", 0)))
@@ -778,6 +810,10 @@ class SlackListener:
                 # blocks에서 텍스트 추출 (Slack blocks 형식)
                 text = self._extract_text_from_blocks(message)
                 message_ts = float(message.get("ts", 0))
+
+                # 디버그: 추출된 텍스트 로깅
+                logger.info(f"[상태 채널 메시지] ts={message_ts}, text={text[:200] if text else '(empty)'}")
+
                 await self._process_status_message(text, message_ts)
                 status_processed_count += 1
 
@@ -819,6 +855,7 @@ class SlackListener:
             
         except Exception as e:
             import traceback
+            logger.error(f"[restore_state_from_history 오류] {e}", exc_info=True)
             traceback.print_exc()
         finally:
             self.is_restoring = False
@@ -958,16 +995,21 @@ class SlackListener:
                         status_messages = status_response.get("messages", [])
                         status_messages.reverse()
 
+                        # 디버그: 폴링으로 가져온 메시지 수
+                        logger.info(f"[상태 채널 폴링] {len(status_messages)}개 메시지 조회됨, last_poll_ts={self.last_poll_timestamp}")
+
                         status_processed_count = 0
                         for msg in status_messages:
                             message_ts = float(msg.get("ts", 0))
 
                             # 이미 처리한 메시지는 스킵
                             if message_ts <= self.last_poll_timestamp:
+                                logger.debug(f"[상태 채널 폴링] 스킵: ts={message_ts} <= {self.last_poll_timestamp}")
                                 continue
 
                             # blocks에서 텍스트 추출 (Slack blocks 형식)
                             text = self._extract_text_from_blocks(msg)
+                            logger.info(f"[상태 채널 폴링] 새 메시지 발견: text={text[:100]}")
 
                             # 상태 메시지 처리 (일반 메시지도 처리, subtype 체크 안함)
                             await self._process_status_message(text, message_ts)
@@ -1001,11 +1043,12 @@ class SlackListener:
                 await asyncio.sleep(60)  # 오류 발생 시 1분 후 재시도
 
     def _extract_text_from_blocks(self, message: dict) -> str:
-        """Slack blocks에서 텍스트 추출"""
-        # blocks가 있으면 blocks에서 추출
+        """Slack blocks에서 텍스트 추출 (attachments 포함)"""
+        text_parts = []
+
+        # 1. message.blocks 처리 (일반 메시지)
         blocks = message.get("blocks", [])
         if blocks:
-            text_parts = []
             for block in blocks:
                 block_type = block.get("type")
 
@@ -1024,9 +1067,50 @@ class SlackListener:
                         if elem.get("type") == "mrkdwn":
                             text_parts.append(elem.get("text", ""))
 
+                # rich_text 블록 (사용자가 직접 입력한 메시지)
+                elif block_type == "rich_text":
+                    elements = block.get("elements", [])
+                    for element in elements:
+                        if element.get("type") == "rich_text_section":
+                            inner_elements = element.get("elements", [])
+                            for inner in inner_elements:
+                                if inner.get("type") == "text":
+                                    text_parts.append(inner.get("text", ""))
+                                elif inner.get("type") == "emoji":
+                                    text_parts.append(f":{inner.get('name', '')}:")
+                                elif inner.get("type") == "user":
+                                    text_parts.append(f"<@{inner.get('user_id', '')}>")
+                        elif element.get("type") == "rich_text_list":
+                            # 리스트 처리 (필요시)
+                            pass
+
+        # 2. message.attachments[].blocks 처리 (봇 메시지)
+        attachments = message.get("attachments", [])
+        for attachment in attachments:
+            att_blocks = attachment.get("blocks", [])
+            for block in att_blocks:
+                block_type = block.get("type")
+
+                # section 블록
+                if block_type == "section":
+                    if "text" in block:
+                        text_parts.append(block["text"].get("text", ""))
+                    if "fields" in block:
+                        for field in block["fields"]:
+                            text_parts.append(field.get("text", ""))
+
+                # context 블록
+                elif block_type == "context":
+                    elements = block.get("elements", [])
+                    for elem in elements:
+                        if elem.get("type") == "mrkdwn":
+                            text_parts.append(elem.get("text", ""))
+
+        # 3. 추출된 텍스트가 있으면 반환
+        if text_parts:
             return "\n".join(text_parts)
 
-        # blocks가 없으면 일반 text 사용
+        # 4. blocks가 없으면 일반 text 사용
         return message.get("text", "")
 
     async def _process_status_message(self, text: str, message_ts: float):
@@ -1143,27 +1227,41 @@ class SlackListener:
                 scheduled_dt = scheduled_dt.replace(hour=hour, minute=minute, tzinfo=SEOUL_TZ)
                 scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-            # 휴가/결석/지각: 미래 날짜면 해당 날짜 00:00으로 예약
-            elif is_future_date:
+            # 휴가/결석/지각: 날짜 기준 예약 (해당 날짜 00:00으로 설정)
+            elif status_type in ['vacation', 'absence', 'late']:
+                # 해당 날짜 00:00으로 설정 (스케줄러가 자동으로 적용)
                 scheduled_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=SEOUL_TZ)
                 scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-            # 오늘 날짜이고 시간 정보 없으면 즉시 적용 (scheduled_utc = None)
+            # 그 외 오늘 날짜이고 시간 정보 없으면 즉시 적용할 시간 계산
+            elif is_today and not time_str:
+                scheduled_dt = now_seoul
+                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-            # Step 9: DB 저장
+            # Step 9: DB 저장 (항상 scheduled 필드에만 저장)
+            from database.models import Student
+            from sqlalchemy import update
+            from database.connection import AsyncSessionLocal
+
             protected = status_type in ['absence', 'vacation']  # 결석/휴가는 보호
-            success = await self.db_service.set_student_status(
-                student_id=student_id,
-                status_type=status_type,
-                status_time=scheduled_utc,
-                reason=reason,
-                end_date=end_date,
-                protected=protected
-            )
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
-            if not success:
-                logger.error(f"[상태 저장 실패] {matched_name} - {status_kr}")
-                return
+            async with AsyncSessionLocal() as session:
+                update_values = {
+                    "scheduled_status_type": status_type,
+                    "scheduled_status_time": scheduled_utc,
+                    "status_reason": reason,
+                    "status_end_date": end_date,
+                    "status_protected": protected,
+                    "updated_at": now_utc
+                }
+
+                await session.execute(
+                    update(Student)
+                    .where(Student.id == student_id)
+                    .values(**update_values)
+                )
+                await session.commit()
 
             # Step 10: 로그
             date_display = f"{start_date}"
@@ -1178,35 +1276,33 @@ class SlackListener:
                 f"{date_display}{time_display}{reason_display}"
             )
 
-            # Step 11: 웹소켓 브로드캐스트 (확인 팝업용)
-            asyncio.create_task(self._broadcast_status_confirmation(
+            # Step 11: 웹소켓 브로드캐스트 (읽기 전용 알림)
+            asyncio.create_task(self._broadcast_status_notification(
                 student_id=student_id,
                 student_name=matched_name,
-                status_type=status_type,
-                status_kr=status_kr,
+                status_type=status_kr,  # 한글 상태명 전송
                 start_date=str(start_date),
                 end_date=str(end_date) if end_date else None,
                 time=time_str,
                 reason=reason,
                 camp=camp_name,
-                scheduled_time=scheduled_utc.isoformat() if scheduled_utc else None,
                 is_future_date=is_future_date
             ))
 
         except Exception as e:
             logger.error(f"[상태 메시지 파싱 오류] {e}", exc_info=True)
 
-    async def _broadcast_status_confirmation(self, **data):
-        """상태 변경 확인 팝업 브로드캐스트"""
+    async def _broadcast_status_notification(self, **data):
+        """상태 변경 알림 브로드캐스트 (읽기 전용)"""
         try:
             from api.websocket_manager import manager
             await manager.broadcast_to_dashboard({
-                "type": "status_confirmation",
+                "type": "status_notification",
                 "payload": data,
                 "timestamp": datetime.now().isoformat()
             })
         except Exception as e:
-            logger.error(f"[상태 확인 브로드캐스트 오류] {e}", exc_info=True)
+            logger.error(f"[상태 알림 브로드캐스트 오류] {e}", exc_info=True)
 
     async def stop(self):
         # 폴링 태스크 종료

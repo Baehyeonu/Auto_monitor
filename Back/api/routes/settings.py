@@ -346,17 +346,14 @@ async def test_status_parsing(data: TestStatusMessageRequest):
 @router.post("/status-confirm/{student_id}")
 async def confirm_status(student_id: int):
     """
-    예약된 상태를 실제 상태로 적용
-    - scheduled_status_type → status_type
-    - scheduled_status_time → status_set_at
-    - 예약 필드는 초기화
+    예약된 상태를 확정
+    - 조퇴/외출: 미래 시간이면 예약 유지, 현재/과거면 즉시 적용
+    - 결석/휴가: 오늘이면 즉시 적용, 미래 날짜면 예약 유지
+    - 스케줄러가 scheduled_status_time이 되면 자동으로 적용
     """
-    system = await wait_for_system_instance()
-    if not system or not system.db_service:
-        raise HTTPException(status_code=503, detail="시스템이 준비되지 않았습니다.")
 
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime, timezone, timedelta
         from database.models import Student
         from sqlalchemy import update
         from database.connection import AsyncSessionLocal
@@ -375,18 +372,62 @@ async def confirm_status(student_id: int):
             if not student.scheduled_status_type:
                 raise HTTPException(status_code=400, detail="예약된 상태가 없습니다.")
 
-            # 예약된 상태를 실제 상태로 적용
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            # 현재 시각 (UTC와 KST)
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            now_kst = now_utc + timedelta(hours=9)
 
+            scheduled_time = student.scheduled_status_time
+            status_type = student.scheduled_status_type
+
+            # 즉시 적용할지 예약 유지할지 판단
+            should_apply_now = False
+
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[확인 API] 학생: {student.zep_name}, 상태: {status_type}")
+            logger.info(f"  - 현재 UTC: {now_utc}, 현재 KST: {now_kst}")
+            logger.info(f"  - 예약 UTC: {scheduled_time}")
+
+            if status_type in ['early_leave', 'outing']:
+                # 조퇴/외출: 시간 기준 비교 (퇴실 시간이 지나면 적용)
+                if scheduled_time is None or scheduled_time <= now_utc:
+                    should_apply_now = True
+                logger.info(f"  - 조퇴/외출 판단: {should_apply_now}")
+            elif status_type in ['absence', 'vacation', 'late']:
+                # 결석/휴가/지각: 날짜 기준 비교 (오늘이면 즉시 적용, 미래면 예약 유지)
+                if scheduled_time:
+                    scheduled_kst = scheduled_time + timedelta(hours=9)
+                    logger.info(f"  - 예약 KST: {scheduled_kst}")
+                    logger.info(f"  - 예약 날짜: {scheduled_kst.date()}, 오늘 날짜: {now_kst.date()}")
+                    # 오늘 날짜인지 확인 (날짜만 비교)
+                    if scheduled_kst.date() <= now_kst.date():
+                        should_apply_now = True
+                    logger.info(f"  - 결석/휴가/지각 판단: {should_apply_now}")
+                else:
+                    should_apply_now = True
+                    logger.info(f"  - scheduled_time이 None, 즉시 적용")
+
+            if not should_apply_now:
+                # 미래 시간/날짜면 예약 유지 (스케줄러가 나중에 처리)
+                scheduled_kst = scheduled_time + timedelta(hours=9)
+                time_str = scheduled_kst.strftime('%Y-%m-%d %H:%M')
+                return {
+                    "success": True,
+                    "message": f"{student.zep_name}의 상태가 예약되었습니다. ({time_str}에 자동 적용)",
+                    "status_type": status_type,
+                    "scheduled": True
+                }
+
+            # 현재/과거 시간이면 즉시 적용
             update_values = {
-                "status_type": student.scheduled_status_type,
-                "status_set_at": student.scheduled_status_time or now,
-                "status_end_date": student.status_end_date,  # 이미 설정된 종료일 유지
+                "status_type": status_type,
+                "status_set_at": scheduled_time or now_utc,
+                "status_end_date": student.status_end_date,
                 "status_protected": student.status_protected or False,
                 # 예약 필드 초기화
                 "scheduled_status_type": None,
                 "scheduled_status_time": None,
-                "updated_at": now
+                "updated_at": now_utc
             }
 
             await session.execute(
@@ -399,7 +440,8 @@ async def confirm_status(student_id: int):
             return {
                 "success": True,
                 "message": f"{student.zep_name}의 상태가 적용되었습니다.",
-                "status_type": student.scheduled_status_type
+                "status_type": status_type,
+                "scheduled": False
             }
 
     except HTTPException:
@@ -416,9 +458,6 @@ async def rollback_status(student_id: int):
     - scheduled_status_time = None
     - status_reason = None
     """
-    system = await wait_for_system_instance()
-    if not system or not system.db_service:
-        raise HTTPException(status_code=503, detail="시스템이 준비되지 않았습니다.")
 
     try:
         from datetime import datetime, timezone
