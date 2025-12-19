@@ -169,8 +169,6 @@ class ZepMonitoringSystem:
 
                 print(f"\n📡 Slack 히스토리 동기화 시작 (최근 {lookback_hours}시간)...")
                 print(f"[디버그] restore_state_from_history() 호출 직전")
-                print(f"[디버그] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}")
-                print(f"[디버그] SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
                 await self.slack_listener.restore_state_from_history(lookback_hours=lookback_hours)
                 print(f"[디버그] restore_state_from_history() 호출 완료")
                 print("✅ Slack 동기화 완료\n")

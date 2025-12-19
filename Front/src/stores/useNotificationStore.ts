@@ -32,8 +32,12 @@ export const useNotificationStore = create<NotificationState>()(
           createdAt: Date.now(),
         }
 
+        console.log('[Store] 알림 추가됨:', notification)
+
         set((state) => {
           const nextNotifications = [notification, ...state.notifications]
+
+          console.log('[Store] 전체 알림 개수:', nextNotifications.length)
 
           // 최대 개수 제한
           if (nextNotifications.length > MAX_NOTIFICATIONS) {

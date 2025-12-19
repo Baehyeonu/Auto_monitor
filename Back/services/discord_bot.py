@@ -631,8 +631,11 @@ class DiscordBot(commands.Bot):
             전송 성공 여부
         """
         try:
+            if not student.last_status_change:
+                return False
+
             user = await self.fetch_user(student.discord_id)
-            
+
             # 경과 시간 계산
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
@@ -886,6 +889,9 @@ class DiscordBot(commands.Bot):
             if not admin_ids:
                 return
 
+            if not student.last_status_change:
+                return
+
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
 
@@ -947,6 +953,9 @@ class DiscordBot(commands.Bot):
             if not admin_ids:
                 return
 
+            if not student.last_leave_time:
+                return
+
             # 경과 시간 계산
             last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
@@ -1001,8 +1010,11 @@ class DiscordBot(commands.Bot):
             전송 성공 여부
         """
         try:
+            if not student.last_leave_time:
+                return False
+
             user = await self.fetch_user(student.discord_id)
-            
+
             # 경과 시간 계산
             last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
@@ -1214,9 +1226,15 @@ class DiscordBot(commands.Bot):
             if student.last_leave_time:
                 ref_time = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
                 status_text = "접속 종료"
-            else:
+            elif student.last_status_change:
                 ref_time = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
                 status_text = "카메라 OFF"
+            else:
+                await interaction.response.send_message(
+                    f"❌ {student.zep_name}님의 상태 정보가 없습니다.",
+                    ephemeral=True
+                )
+                return
 
             elapsed_minutes = int((datetime.now(timezone.utc) - ref_time).total_seconds() / 60)
 
@@ -1310,8 +1328,11 @@ class DiscordBot(commands.Bot):
             전송 성공 여부
         """
         try:
+            if not student.last_return_request_time:
+                return False
+
             user = await self.fetch_user(student.discord_id)
-            
+
             # 경과 시간 계산
             last_return_time_utc = student.last_return_request_time if student.last_return_request_time.tzinfo else student.last_return_request_time.replace(tzinfo=timezone.utc)
             elapsed_minutes = int((datetime.now(timezone.utc) - last_return_time_utc).total_seconds() / 60)

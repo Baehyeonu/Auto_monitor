@@ -78,25 +78,6 @@ class SlackListener:
         self.pattern_join_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:entered|joined|connected)", re.IGNORECASE)
         self.pattern_leave_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:left|exited|disconnected)", re.IGNORECASE)
 
-        # 상태 파싱 패턴 (OZ헬프센터용)
-        # * 는 Slack 볼드체이므로 모든 패턴에서 선택적으로 매치
-        # 유니코드 이모지 + Slack 이모지 코드 모두 지원
-        self.pattern_status_header = re.compile(r'(?::(?:큰_보라색_원|빨간색_원|야자수|큰_주황색_원|큰_노란색_원|palm_tree|large_purple_circle|red_circle|large_orange_circle|large_yellow_circle):|🟣|🔴|🌴|🟠|🟡)\s*\*?(조퇴|결석|휴가|외출|지각)\*?')
-        self.pattern_camp_name = re.compile(r'(?:(?::(?:클립보드|clipboard):|📋)\s*)?\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\s|$)')
-        self.pattern_single_date = re.compile(r'(?:(?::(?:날짜|date):|📅)\s*)?\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_date_range = re.compile(r'(?:(?::(?:날짜|date):|📅)\s*)?\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_time_single = re.compile(r'(?:(?::시계_\d시:|🕐|🕑|🕒|🕓|🕔|🕕|🕖|🕗|🕘|🕙|🕚|🕛)\s*)?\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
-        self.pattern_reason = re.compile(r'(?:(?::(?:말풍선|speech_balloon):|💬)\s*)?\*?(.+?)\*?(?:\n|$)')
-
-        # 상태 타입 매핑
-        self.status_type_map = {
-            '조퇴': 'early_leave',
-            '외출': 'leave',
-            '결석': 'absence',
-            '휴가': 'vacation',
-            '지각': 'late'
-        }
-
         # 이벤트 핸들러 등록 (모든 메시지 타입 수신)
         self.app.message()(self._handle_all_messages)
     
@@ -263,12 +244,6 @@ class SlackListener:
             # 기존 채널: 카메라/입장/퇴장
             if channel == config.SLACK_CHANNEL_ID:
                 asyncio.create_task(self._process_message_async(text, message_ts))
-
-            # 상태 채널: 조퇴/외출/결석/휴가
-            elif (config.STATUS_PARSING_ENABLED and
-                  channel == config.SLACK_STATUS_CHANNEL_ID):
-                logger.info(f"[상태 채널 메시지] 파싱 시작")
-                asyncio.create_task(self._process_status_message(text, message_ts))
         except Exception as e:
             logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
     
@@ -624,8 +599,6 @@ class SlackListener:
     async def restore_state_from_history(self, lookback_hours: int = 24):
         try:
             # 디버깅: 현재 config 값 출력
-            print(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                  f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
 
             self.is_restoring = True
             self.joined_students_today.clear()
@@ -703,45 +676,7 @@ class SlackListener:
 
             print(f"[디버그] 카메라 채널 조회 완료: {len(messages)}개 메시지")
 
-            # 상태 채널 메시지도 조회 (활성화된 경우)
-            status_messages = []
-            if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
-                # 디버그: 조회 시간 범위 로깅
-                logger.info(f"[상태 채널 조회] oldest_ts={oldest_ts} ({datetime.fromtimestamp(oldest_ts, tz=timezone.utc)})")
-
-                status_cursor = None
-                while True:
-                    status_response = await self.app.client.conversations_history(
-                        channel=config.SLACK_STATUS_CHANNEL_ID,
-                        oldest=str(oldest_ts),
-                        limit=1000,
-                        cursor=status_cursor
-                    )
-
-                    if not status_response.get("ok"):
-                        error = status_response.get("error", "unknown_error")
-                        logger.error(f"[상태 채널 조회 실패] {error}")
-                        if error == "channel_not_found":
-                            logger.error(f"   💡 Bot이 상태 채널({config.SLACK_STATUS_CHANNEL_ID})에 초대되지 않았습니다.")
-                        break
-
-                    batch = status_response.get("messages", [])
-                    status_messages.extend(batch)
-
-                    status_cursor = status_response.get("response_metadata", {}).get("next_cursor")
-                    if not status_cursor:
-                        break
-
-                print(f"[디버그] 상태 채널 조회 완료: {len(status_messages)}개 메시지")
-
-                if status_messages:
-                    status_messages.sort(key=lambda msg: float(msg.get("ts", 0)))
-                    logger.info(f"[상태 채널 복원] {len(status_messages)}개 메시지 조회 완료")
-
-            # 디버그: 조회된 메시지 수 로깅
-            logger.info(f"[동기화] 카메라 채널: {len(messages)}개, 상태 채널: {len(status_messages)}개")
-
-            if not messages and not status_messages:
+            if not messages:
                 logger.info("[동기화] 메시지 없음 - 종료")
                 return
             
@@ -803,22 +738,6 @@ class SlackListener:
                         await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=False)
                     processed_count += 1
                     continue
-
-            # 상태 채널 메시지 처리
-            status_processed_count = 0
-            for message in status_messages:
-                # blocks에서 텍스트 추출 (Slack blocks 형식)
-                text = self._extract_text_from_blocks(message)
-                message_ts = float(message.get("ts", 0))
-
-                # 디버그: 추출된 텍스트 로깅
-                logger.info(f"[상태 채널 메시지] ts={message_ts}, text={text[:200] if text else '(empty)'}")
-
-                await self._process_status_message(text, message_ts)
-                status_processed_count += 1
-
-            if status_processed_count > 0:
-                logger.info(f"[상태 채널 복원] {status_processed_count}개 메시지 처리 완료")
 
             # 백엔드 재시작/동기화 시: 응답 관련 필드만 초기화 (쿨다운 타이머는 유지)
             await self.db_service.reset_alert_fields_partial()
@@ -981,43 +900,6 @@ class SlackListener:
                     if processed_count > 0:
                         logger.info(f"[폴링 완료] {processed_count}개 누락 메시지 처리")
 
-                # 상태 채널 폴링 (활성화된 경우)
-                if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
-                    status_response = await self.app.client.conversations_history(
-                        channel=config.SLACK_STATUS_CHANNEL_ID,
-                        oldest=str(self.last_poll_timestamp),
-                        limit=100
-                    )
-
-                    if not status_response.get("ok"):
-                        logger.error(f"[상태 채널 폴링 실패] Slack API 오류: {status_response.get('error')}")
-                    else:
-                        status_messages = status_response.get("messages", [])
-                        status_messages.reverse()
-
-                        # 디버그: 폴링으로 가져온 메시지 수
-                        logger.info(f"[상태 채널 폴링] {len(status_messages)}개 메시지 조회됨, last_poll_ts={self.last_poll_timestamp}")
-
-                        status_processed_count = 0
-                        for msg in status_messages:
-                            message_ts = float(msg.get("ts", 0))
-
-                            # 이미 처리한 메시지는 스킵
-                            if message_ts <= self.last_poll_timestamp:
-                                logger.debug(f"[상태 채널 폴링] 스킵: ts={message_ts} <= {self.last_poll_timestamp}")
-                                continue
-
-                            # blocks에서 텍스트 추출 (Slack blocks 형식)
-                            text = self._extract_text_from_blocks(msg)
-                            logger.info(f"[상태 채널 폴링] 새 메시지 발견: text={text[:100]}")
-
-                            # 상태 메시지 처리 (일반 메시지도 처리, subtype 체크 안함)
-                            await self._process_status_message(text, message_ts)
-                            status_processed_count += 1
-
-                        if status_processed_count > 0:
-                            logger.info(f"[상태 채널] {status_processed_count}개 메시지 파싱 완료")
-
                 # 타임스탬프 업데이트
                 self.last_poll_timestamp = now_ts
 
@@ -1112,197 +994,6 @@ class SlackListener:
 
         # 4. blocks가 없으면 일반 text 사용
         return message.get("text", "")
-
-    async def _process_status_message(self, text: str, message_ts: float):
-        """OZ헬프센터 상태 메시지 파싱"""
-        try:
-            if not text or not config.STATUS_PARSING_ENABLED:
-                return
-
-            # Step 1: 상태 타입 파싱
-            match_status = self.pattern_status_header.search(text)
-            if not match_status:
-                return
-
-            status_kr = match_status.group(1)  # "조퇴", "결석" 등
-            status_type = self.status_type_map.get(status_kr)
-            if not status_type:
-                return
-
-            # Step 2: 캠프/이름 파싱
-            match_camp = self.pattern_camp_name.search(text)
-            if not match_camp:
-                logger.warning(f"[상태 파싱] 캠프/이름 추출 실패: {text[:100]}")
-                return
-
-            camp_name = match_camp.group(1).strip()
-            student_name = match_camp.group(2).strip()
-
-            # Step 3: 캠프 필터링
-            if config.STATUS_CAMP_FILTER:
-                if camp_name != config.STATUS_CAMP_FILTER:
-                    # 다른 캠프는 조용히 무시
-                    return
-
-            # Step 4: 학생 매칭
-            student_id = None
-            matched_name = student_name
-
-            # 캐시 조회
-            for name in self._extract_all_korean_names(student_name):
-                if name in self.student_cache:
-                    student_id = self.student_cache[name]
-                    student = await self.db_service.get_student_by_id(student_id)
-                    if student:
-                        matched_name = student.zep_name
-                    break
-
-            # DB 조회
-            if not student_id:
-                student = await self.db_service.get_student_by_zep_name(student_name)
-                if not student:
-                    for name in self._extract_all_korean_names(student_name):
-                        student = await self.db_service.get_student_by_zep_name(name)
-                        if student:
-                            break
-
-                if student:
-                    student_id = student.id
-                    matched_name = student.zep_name
-                    self.student_cache[student_name] = student_id
-
-            if not student_id:
-                logger.warning(f"[상태 파싱] 학생 매칭 실패: '{student_name}' (캠프: {camp_name})")
-                return
-
-            # Step 5: 날짜/기간 파싱
-            start_date = None
-            end_date = None
-
-            # 기간 형식 먼저 시도
-            match_range = self.pattern_date_range.search(text)
-            if match_range:
-                start_str = match_range.group(1)
-                end_str = match_range.group(2)
-                start_date = datetime.strptime(start_str, "%Y.%m.%d").date()
-                end_date = datetime.strptime(end_str, "%Y.%m.%d").date()
-            else:
-                # 단일 일자
-                match_single = self.pattern_single_date.search(text)
-                if match_single:
-                    date_str = match_single.group(1)
-                    start_date = datetime.strptime(date_str, "%Y.%m.%d").date()
-
-            if not start_date:
-                return
-
-            # Step 6: 시간 파싱
-            time_str = None
-            match_time = self.pattern_time_single.search(text)
-            if match_time:
-                time_str = match_time.group(1)  # "15:15"
-
-            # Step 7: 사유 파싱
-            reason = None
-            match_reason = self.pattern_reason.search(text)
-            if match_reason:
-                reason = match_reason.group(1).strip()
-
-            # Step 8: 적용 시간 계산 (예약 로직)
-            from zoneinfo import ZoneInfo
-            SEOUL_TZ = ZoneInfo("Asia/Seoul")
-            now_seoul = datetime.now(SEOUL_TZ)
-            today = now_seoul.date()
-
-            scheduled_utc = None
-
-            # 날짜 기반 예약 판단
-            is_future_date = start_date > today
-            is_today = start_date == today
-
-            # 조퇴/외출: 시간이 지정된 경우 해당 시간으로 예약
-            if status_type in ['early_leave', 'leave'] and time_str:
-                hour, minute = map(int, time_str.split(':'))
-                scheduled_dt = datetime.combine(start_date, datetime.min.time())
-                scheduled_dt = scheduled_dt.replace(hour=hour, minute=minute, tzinfo=SEOUL_TZ)
-                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
-
-            # 휴가/결석/지각: 날짜 기준 예약 (해당 날짜 00:00으로 설정)
-            elif status_type in ['vacation', 'absence', 'late']:
-                # 해당 날짜 00:00으로 설정 (스케줄러가 자동으로 적용)
-                scheduled_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=SEOUL_TZ)
-                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
-
-            # 그 외 오늘 날짜이고 시간 정보 없으면 즉시 적용할 시간 계산
-            elif is_today and not time_str:
-                scheduled_dt = now_seoul
-                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
-
-            # Step 9: DB 저장 (항상 scheduled 필드에만 저장)
-            from database.models import Student
-            from sqlalchemy import update
-            from database.connection import AsyncSessionLocal
-
-            protected = status_type in ['absence', 'vacation']  # 결석/휴가는 보호
-            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-
-            async with AsyncSessionLocal() as session:
-                update_values = {
-                    "scheduled_status_type": status_type,
-                    "scheduled_status_time": scheduled_utc,
-                    "status_reason": reason,
-                    "status_end_date": end_date,
-                    "status_protected": protected,
-                    "updated_at": now_utc
-                }
-
-                await session.execute(
-                    update(Student)
-                    .where(Student.id == student_id)
-                    .values(**update_values)
-                )
-                await session.commit()
-
-            # Step 10: 로그
-            date_display = f"{start_date}"
-            if end_date and end_date != start_date:
-                date_display = f"{start_date} ~ {end_date}"
-
-            time_display = f" {time_str}" if time_str else ""
-            reason_display = f" ({reason})" if reason else ""
-
-            logger.info(
-                f"[상태 파싱] {matched_name} | {status_kr} | "
-                f"{date_display}{time_display}{reason_display}"
-            )
-
-            # Step 11: 웹소켓 브로드캐스트 (읽기 전용 알림)
-            asyncio.create_task(self._broadcast_status_notification(
-                student_id=student_id,
-                student_name=matched_name,
-                status_type=status_kr,  # 한글 상태명 전송
-                start_date=str(start_date),
-                end_date=str(end_date) if end_date else None,
-                time=time_str,
-                reason=reason,
-                camp=camp_name,
-                is_future_date=is_future_date
-            ))
-
-        except Exception as e:
-            logger.error(f"[상태 메시지 파싱 오류] {e}", exc_info=True)
-
-    async def _broadcast_status_notification(self, **data):
-        """상태 변경 알림 브로드캐스트 (읽기 전용)"""
-        try:
-            from api.websocket_manager import manager
-            await manager.broadcast_to_dashboard({
-                "type": "status_notification",
-                "payload": data,
-                "timestamp": datetime.now().isoformat()
-            })
-        except Exception as e:
-            logger.error(f"[상태 알림 브로드캐스트 오류] {e}", exc_info=True)
 
     async def stop(self):
         # 폴링 태스크 종료

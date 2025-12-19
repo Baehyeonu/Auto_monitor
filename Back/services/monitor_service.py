@@ -359,7 +359,7 @@ class MonitorService:
                 continue
 
             # 수업 시작 전에 입장한 학생은 수업 시작 시간부터 카운트
-            if class_start_time_utc:
+            if class_start_time_utc and student.last_status_change:
                 last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
                 # 학생이 수업 시작 전에 입장했고, 현재 시간이 수업 시작 이후라면
                 if last_change_utc < class_start_time_utc and datetime.now(timezone.utc) >= class_start_time_utc:
@@ -385,6 +385,9 @@ class MonitorService:
         for student in students_to_alert:
 
             if self.is_dm_paused:
+                continue
+
+            if not student.last_status_change:
                 continue
 
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
@@ -479,9 +482,12 @@ class MonitorService:
             alerted_ids = []
             
             for student in students_to_alert:
+                if not student.last_leave_time:
+                    continue
+
                 await self.discord_bot.send_leave_alert_to_admin(student)
                 alerted_ids.append(student.id)
-                
+
                 last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
                 elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
                 
@@ -513,10 +519,13 @@ class MonitorService:
             
             if should_alert:
                 success = await self.discord_bot.send_absent_alert(student)
-                
+
                 if success:
                     await self.db_service.record_absent_alert_sent(student.id)
-                    
+
+                    if not student.last_leave_time:
+                        continue
+
                     last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
                     elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
                     absent_type_text = "외출" if student.absent_type == "leave" else "조퇴"
@@ -603,6 +612,8 @@ class MonitorService:
             
             has_recent_students = False
             for student in all_students:
+                if not student.last_status_change:
+                    continue
                 if student.last_status_change.tzinfo is None:
                     last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
                 else:

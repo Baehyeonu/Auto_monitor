@@ -18,9 +18,14 @@ class SettingsResponse(BaseModel):
     discord_connected: bool
     slack_connected: bool
     admin_count: int
-    status_parsing_enabled: bool = False
-    status_camp_filter: Optional[str] = None
-    slack_status_channel_configured: bool = False
+
+    # 연동 토큰 설정
+    discord_bot_token: Optional[str] = None
+    discord_server_id: Optional[str] = None
+    slack_bot_token: Optional[str] = None
+    slack_app_token: Optional[str] = None
+    slack_channel_id: Optional[str] = None
+    google_sheets_url: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -33,7 +38,13 @@ class SettingsUpdate(BaseModel):
     lunch_start_time: Optional[str] = None
     lunch_end_time: Optional[str] = None
     daily_reset_time: Optional[str] = None
-    status_parsing_enabled: Optional[bool] = None
-    status_camp_filter: Optional[str] = None
+
+    # 연동 토큰 설정
+    discord_bot_token: Optional[str] = None
+    discord_server_id: Optional[str] = None
+    slack_bot_token: Optional[str] = None
+    slack_app_token: Optional[str] = None
+    slack_channel_id: Optional[str] = None
+    google_sheets_url: Optional[str] = None
 
 

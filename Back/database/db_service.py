@@ -671,10 +671,16 @@ class DBService:
                         print(f"  [재시작 복원] {student.zep_name}: 어제 이전 상태({student.status_type}) 리셋")
                 else:
                     # 상태가 없는 학생: last_status_change가 초기화 시간 이전이면 리셋
-                    if student.last_status_change.tzinfo is None:
-                        last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
+                    if student.last_status_change:
+                        if student.last_status_change.tzinfo is None:
+                            last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
+                        else:
+                            last_change_utc = student.last_status_change
                     else:
-                        last_change_utc = student.last_status_change
+                        # last_status_change가 없으면 리셋 대상
+                        student_ids_to_reset.append(student.id)
+                        print(f"  [재시작 복원] {student.zep_name}: 상태 변경 기록 없음, 리셋")
+                        continue
 
                     if last_change_utc <= reset_time_utc:
                         student_ids_to_reset.append(student.id)

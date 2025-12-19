@@ -12,9 +12,14 @@ export interface SettingsResponse {
   slack_connected: boolean
   admin_count: number
   screen_monitor_enabled?: boolean
-  status_parsing_enabled: boolean
-  status_camp_filter: string | null
-  slack_status_channel_configured: boolean
+
+  // 연동 토큰 설정
+  discord_bot_token?: string | null
+  discord_server_id?: string | null
+  slack_bot_token?: string | null
+  slack_app_token?: string | null
+  slack_channel_id?: string | null
+  google_sheets_url?: string | null
 }
 
 export type SettingsUpdatePayload = Partial<
@@ -29,8 +34,12 @@ export type SettingsUpdatePayload = Partial<
     | 'lunch_start_time'
     | 'lunch_end_time'
     | 'daily_reset_time'
-    | 'status_parsing_enabled'
-    | 'status_camp_filter'
+    | 'discord_bot_token'
+    | 'discord_server_id'
+    | 'slack_bot_token'
+    | 'slack_app_token'
+    | 'slack_channel_id'
+    | 'google_sheets_url'
   >
 >
 

@@ -69,9 +69,13 @@ async def get_settings():
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
         "admin_count": len(admins),
-        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
-        "status_camp_filter": config.STATUS_CAMP_FILTER,
-        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
+        # 연동 토큰 설정
+        "discord_bot_token": config.DISCORD_BOT_TOKEN,
+        "discord_server_id": config.DISCORD_SERVER_ID,
+        "slack_bot_token": config.SLACK_BOT_TOKEN,
+        "slack_app_token": config.SLACK_APP_TOKEN,
+        "slack_channel_id": config.SLACK_CHANNEL_ID,
+        "google_sheets_url": config.GOOGLE_SHEETS_URL,
     }
 
 
@@ -103,10 +107,20 @@ async def update_settings(data: SettingsUpdate):
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
         updated_fields['daily_reset_time'] = data.daily_reset_time
-    if data.status_parsing_enabled is not None:
-        config.STATUS_PARSING_ENABLED = data.status_parsing_enabled
-    if data.status_camp_filter is not None:
-        config.STATUS_CAMP_FILTER = data.status_camp_filter
+
+    # 연동 토큰 설정
+    if data.discord_bot_token is not None:
+        config.DISCORD_BOT_TOKEN = data.discord_bot_token
+    if data.discord_server_id is not None:
+        config.DISCORD_SERVER_ID = data.discord_server_id
+    if data.slack_bot_token is not None:
+        config.SLACK_BOT_TOKEN = data.slack_bot_token
+    if data.slack_app_token is not None:
+        config.SLACK_APP_TOKEN = data.slack_app_token
+    if data.slack_channel_id is not None:
+        config.SLACK_CHANNEL_ID = data.slack_channel_id
+    if data.google_sheets_url is not None:
+        config.GOOGLE_SHEETS_URL = data.google_sheets_url
 
     save_persisted_settings(config)
 
@@ -130,9 +144,13 @@ async def update_settings(data: SettingsUpdate):
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
         "admin_count": len(admins),
-        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
-        "status_camp_filter": config.STATUS_CAMP_FILTER,
-        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
+        # 연동 토큰 설정
+        "discord_bot_token": config.DISCORD_BOT_TOKEN,
+        "discord_server_id": config.DISCORD_SERVER_ID,
+        "slack_bot_token": config.SLACK_BOT_TOKEN,
+        "slack_app_token": config.SLACK_APP_TOKEN,
+        "slack_channel_id": config.SLACK_CHANNEL_ID,
+        "google_sheets_url": config.GOOGLE_SHEETS_URL,
     }
 
 
@@ -281,228 +299,18 @@ async def update_ignore_keywords(data: IgnoreKeywordsUpdate):
     return {"keywords": existing_data["ignore_keywords"]}
 
 
-@router.post("/status-rollback/{student_id}")
-async def rollback_status_change(student_id: int):
-    """상태 변경 취소 (확인 팝업에서 '취소' 버튼)"""
-    try:
-        # 학생 조회
-        student = await DBService.get_student_by_id(student_id)
-        if not student:
-            raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+@router.post("/sync-google-sheets")
+async def sync_google_sheets():
+    """Google Sheets에서 상태 데이터 동기화"""
+    from services.google_sheets_service import google_sheets_service
 
-        # 상태 제거 (None으로 설정)
-        success = await DBService.set_student_status(
-            student_id=student_id,
-            status_type=None,
-            status_time=None,
-            reason=None,
-            end_date=None,
-            protected=False
-        )
+    result = await google_sheets_service.sync_status_from_sheets()
 
-        if not success:
-            raise HTTPException(status_code=400, detail="상태 롤백에 실패했습니다.")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
-        # 대시보드 업데이트 브로드캐스트
-        system = await wait_for_system_instance(timeout=2)
-        if system and system.monitor_service:
-            await system.monitor_service.broadcast_dashboard_update_now()
-
-        return {"success": True, "message": "상태 변경이 취소되었습니다."}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"롤백 실패: {str(e)}")
+    return result
 
 
-class TestStatusMessageRequest(BaseModel):
-    text: str
-
-
-@router.post("/test-status-parsing")
-async def test_status_parsing(data: TestStatusMessageRequest):
-    """상태 파싱 테스트용 엔드포인트 (curl로 테스트 가능)"""
-    system = await wait_for_system_instance(timeout=5)
-
-    if not system:
-        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다.")
-
-    if not system.slack_listener:
-        raise HTTPException(status_code=503, detail="Slack 리스너가 실행 중이 아닙니다.")
-
-    try:
-        import time
-        # 현재 timestamp 생성
-        message_ts = time.time()
-
-        # Slack 리스너의 파싱 메서드 직접 호출
-        await system.slack_listener._process_status_message(data.text, message_ts)
-
-        return {"success": True, "message": "파싱 요청을 처리했습니다. 로그를 확인하세요."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"파싱 실패: {str(e)}")
-
-
-@router.post("/status-confirm/{student_id}")
-async def confirm_status(student_id: int):
-    """
-    예약된 상태를 확정
-    - 조퇴/외출: 미래 시간이면 예약 유지, 현재/과거면 즉시 적용
-    - 결석/휴가: 오늘이면 즉시 적용, 미래 날짜면 예약 유지
-    - 스케줄러가 scheduled_status_time이 되면 자동으로 적용
-    """
-
-    try:
-        from datetime import datetime, timezone, timedelta
-        from database.models import Student
-        from sqlalchemy import update
-        from database.connection import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as session:
-            # 학생 조회
-            from sqlalchemy import select
-            result = await session.execute(
-                select(Student).where(Student.id == student_id)
-            )
-            student = result.scalar_one_or_none()
-
-            if not student:
-                raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
-
-            if not student.scheduled_status_type:
-                raise HTTPException(status_code=400, detail="예약된 상태가 없습니다.")
-
-            # 현재 시각 (UTC와 KST)
-            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-            now_kst = now_utc + timedelta(hours=9)
-
-            scheduled_time = student.scheduled_status_time
-            status_type = student.scheduled_status_type
-
-            # 즉시 적용할지 예약 유지할지 판단
-            should_apply_now = False
-
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"[확인 API] 학생: {student.zep_name}, 상태: {status_type}")
-            logger.info(f"  - 현재 UTC: {now_utc}, 현재 KST: {now_kst}")
-            logger.info(f"  - 예약 UTC: {scheduled_time}")
-
-            if status_type in ['early_leave', 'outing']:
-                # 조퇴/외출: 시간 기준 비교 (퇴실 시간이 지나면 적용)
-                if scheduled_time is None or scheduled_time <= now_utc:
-                    should_apply_now = True
-                logger.info(f"  - 조퇴/외출 판단: {should_apply_now}")
-            elif status_type in ['absence', 'vacation', 'late']:
-                # 결석/휴가/지각: 날짜 기준 비교 (오늘이면 즉시 적용, 미래면 예약 유지)
-                if scheduled_time:
-                    scheduled_kst = scheduled_time + timedelta(hours=9)
-                    logger.info(f"  - 예약 KST: {scheduled_kst}")
-                    logger.info(f"  - 예약 날짜: {scheduled_kst.date()}, 오늘 날짜: {now_kst.date()}")
-                    # 오늘 날짜인지 확인 (날짜만 비교)
-                    if scheduled_kst.date() <= now_kst.date():
-                        should_apply_now = True
-                    logger.info(f"  - 결석/휴가/지각 판단: {should_apply_now}")
-                else:
-                    should_apply_now = True
-                    logger.info(f"  - scheduled_time이 None, 즉시 적용")
-
-            if not should_apply_now:
-                # 미래 시간/날짜면 예약 유지 (스케줄러가 나중에 처리)
-                scheduled_kst = scheduled_time + timedelta(hours=9)
-                time_str = scheduled_kst.strftime('%Y-%m-%d %H:%M')
-                return {
-                    "success": True,
-                    "message": f"{student.zep_name}의 상태가 예약되었습니다. ({time_str}에 자동 적용)",
-                    "status_type": status_type,
-                    "scheduled": True
-                }
-
-            # 현재/과거 시간이면 즉시 적용
-            update_values = {
-                "status_type": status_type,
-                "status_set_at": scheduled_time or now_utc,
-                "status_end_date": student.status_end_date,
-                "status_protected": student.status_protected or False,
-                # 예약 필드 초기화
-                "scheduled_status_type": None,
-                "scheduled_status_time": None,
-                "updated_at": now_utc
-            }
-
-            await session.execute(
-                update(Student)
-                .where(Student.id == student_id)
-                .values(**update_values)
-            )
-            await session.commit()
-
-            return {
-                "success": True,
-                "message": f"{student.zep_name}의 상태가 적용되었습니다.",
-                "status_type": status_type,
-                "scheduled": False
-            }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"상태 적용 실패: {str(e)}")
-
-
-@router.post("/status-rollback/{student_id}")
-async def rollback_status(student_id: int):
-    """
-    예약된 상태를 취소
-    - scheduled_status_type = None
-    - scheduled_status_time = None
-    - status_reason = None
-    """
-
-    try:
-        from datetime import datetime, timezone
-        from database.models import Student
-        from sqlalchemy import update
-        from database.connection import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as session:
-            # 학생 조회
-            from sqlalchemy import select
-            result = await session.execute(
-                select(Student).where(Student.id == student_id)
-            )
-            student = result.scalar_one_or_none()
-
-            if not student:
-                raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
-
-            # 예약 필드 초기화
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-            update_values = {
-                "scheduled_status_type": None,
-                "scheduled_status_time": None,
-                "status_reason": None,
-                "status_end_date": None,
-                "status_protected": False,
-                "updated_at": now
-            }
-
-            await session.execute(
-                update(Student)
-                .where(Student.id == student_id)
-                .values(**update_values)
-            )
-            await session.commit()
-
-            return {
-                "success": True,
-                "message": f"{student.zep_name}의 예약된 상태가 취소되었습니다."
-            }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"상태 취소 실패: {str(e)}")
 
 

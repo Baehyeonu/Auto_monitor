@@ -5,7 +5,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNotificationStore } from '@/stores/useNotificationStore'
 import { NotificationBadge } from './NotificationBadge'
 import { NotificationItem } from './NotificationItem'
@@ -53,14 +52,14 @@ export function NotificationCenter() {
             알림이 없습니다
           </div>
         ) : (
-          <ScrollArea className="max-h-[400px]">
+          <div className="max-h-[400px] overflow-y-auto">
             {notifications.map((notification) => (
               <NotificationItem
                 key={notification.id}
                 notification={notification}
               />
             ))}
-          </ScrollArea>
+          </div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

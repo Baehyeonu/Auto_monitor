@@ -45,6 +45,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",  # 개발 모드 (Vite)
         "http://localhost:3000",  # Docker 프론트엔드
+        "http://localhost",       # Docker 프론트엔드 (nginx 기본 포트)
         "http://frontend:80",     # Docker 내부 네트워크
     ],
     allow_credentials=True,
