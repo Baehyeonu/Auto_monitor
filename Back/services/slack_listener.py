@@ -643,9 +643,6 @@ class SlackListener:
                 today_reset_ts = oldest_dt.timestamp()
                 oldest_ts = oldest_dt.timestamp()
 
-            print(f"[디버그] oldest_ts={oldest_ts}, oldest_dt={datetime.fromtimestamp(oldest_ts, tz=timezone.utc)}")
-            print(f"[디버그] lookback_hours={lookback_hours}")
-
             messages = []
             cursor = None
 
@@ -659,12 +656,7 @@ class SlackListener:
 
                 if not response.get("ok"):
                     error = response.get("error", "unknown_error")
-                    print(f"   ⚠️ Slack 채널 조회 실패: {error}")
-                    if error == "channel_not_found":
-                        print(f"   💡 해결 방법:")
-                        print(f"      1. Bot을 채널에 초대했는지 확인")
-                        print(f"      2. 채널 ID가 올바른지 확인 (현재: {config.SLACK_CHANNEL_ID})")
-                        print(f"      3. Private 채널인 경우 Bot이 초대되어야 합니다")
+                    logger.warning(f"Slack 채널 조회 실패: {error}")
                     break
 
                 batch = response.get("messages", [])
@@ -673,8 +665,6 @@ class SlackListener:
                 cursor = response.get("response_metadata", {}).get("next_cursor")
                 if not cursor:
                     break
-
-            print(f"[디버그] 카메라 채널 조회 완료: {len(messages)}개 메시지")
 
             if not messages:
                 logger.info("[동기화] 메시지 없음 - 종료")
@@ -791,12 +781,6 @@ class SlackListener:
             )
 
             await self._refresh_student_cache()
-
-            # 디버깅: 현재 config 값 출력 (print로 강제 출력)
-            print(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                  f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
-            logger.info(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                       f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
 
             # 상태 채널 접근 테스트
             if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:

@@ -15,9 +15,7 @@ function App() {
 
   useWebSocket({
     onMessage: (message) => {
-      console.log('[WebSocket 수신]', message.type, message)
       if (message.type === 'status_notification') {
-        console.log('[알림 추가]', message.payload)
         addNotification(
           message.payload as StatusNotificationData,
           message.timestamp || new Date().toISOString()
