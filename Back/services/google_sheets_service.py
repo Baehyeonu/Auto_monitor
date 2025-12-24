@@ -8,6 +8,7 @@ from datetime import datetime, date, time
 from typing import Optional, List, Dict, Any
 from config import config
 from database import DBService
+from database.db_service import now_seoul, SEOUL_TZ
 import logging
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,8 @@ class GoogleSheetsService:
             "조퇴": "early_leave",
             "외출": "leave",
             "휴가": "vacation",
-            "결석": "absence"
+            "결석": "absence",
+            "병원 진료 및 건강 악화": "absence"
         }
         return status_mapping.get(status_kr)
 
@@ -153,8 +155,10 @@ class GoogleSheetsService:
             skipped_count = 0
             error_count = 0
             errors = []
+            updated_details = []  # 업데이트된 학생 상세 정보
 
-            today = date.today()
+            now_local = now_seoul()
+            today = now_local.date()
 
             for row in rows:
                 try:
@@ -189,6 +193,14 @@ class GoogleSheetsService:
                     # 시간 파싱 (선택)
                     time_str = row.get('입실 / 퇴실 예정 시간', '').strip()
                     parsed_time = self._parse_korean_time(time_str) if time_str else None
+                    time_obj = None
+                    if parsed_time:
+                        try:
+                            time_obj = datetime.strptime(parsed_time, "%H:%M").time()
+                        except ValueError:
+                            skipped_count += 1
+                            logger.warning(f"[Google Sheets] 잘못된 시간 형식: {parsed_time}")
+                            continue
 
                     # 사유 (선택)
                     reason = row.get('세부 사유', '').strip() or row.get('내용', '').strip()
@@ -206,26 +218,58 @@ class GoogleSheetsService:
                         continue
 
                     # 상태 업데이트
-                    # 오늘이면 즉시 적용, 미래면 예약
+                    # 오늘이면 즉시 적용 또는 예약, 미래면 예약
+                    is_protected = status_type in ["vacation", "absence"]
+                    is_immediate = False
+                    scheduled_time_str = None
+
                     if start_date == today:
-                        # 즉시 적용
+                        if status_type == "late":
+                            if time_obj:
+                                scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
+                                if scheduled_dt < now_local:
+                                    skipped_count += 1
+                                    continue
+                            is_immediate = True
+                        elif status_type == "leave":
+                            if time_obj:
+                                scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
+                                if scheduled_dt < now_local:
+                                    skipped_count += 1
+                                    continue
+                                scheduled_time_str = parsed_time
+                            else:
+                                is_immediate = True
+                        elif status_type == "early_leave":
+                            if time_obj:
+                                scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
+                                if scheduled_dt < now_local:
+                                    is_immediate = True
+                                else:
+                                    scheduled_time_str = parsed_time
+                            else:
+                                is_immediate = True
+                        else:
+                            # 휴가/결석은 날짜 기준으로 즉시 적용
+                            is_immediate = True
+
                         await self.db_service.set_student_status(
                             student_id=student.id,
                             status_type=status_type,
-                            status_time=parsed_time,
+                            status_time=scheduled_time_str if not is_immediate else None,
                             reason=reason,
                             end_date=end_date,
-                            protected=True  # Google Sheets에서 온 상태는 보호
+                            protected=is_protected
                         )
                     else:
                         # 미래 날짜 - 예약 상태로 설정
                         # scheduled_status_time에 날짜+시간을 datetime으로 저장
-                        if parsed_time:
-                            time_obj = datetime.strptime(parsed_time, "%H:%M").time()
+                        if status_type in ["vacation", "absence"]:
+                            schedule_time_obj = time(0, 0)
                         else:
-                            time_obj = time(0, 0)  # 시간 없으면 자정
+                            schedule_time_obj = time_obj if time_obj else time(0, 0)
 
-                        scheduled_datetime = datetime.combine(start_date, time_obj)
+                        scheduled_datetime = datetime.combine(start_date, schedule_time_obj)
 
                         # DB 업데이트 (scheduled_status_* 필드 사용)
                         from database.connection import AsyncSessionLocal
@@ -240,7 +284,7 @@ class GoogleSheetsService:
                                 scheduled_status_time=scheduled_datetime,
                                 status_reason=reason,
                                 status_end_date=end_date,
-                                status_protected=True
+                                status_protected=is_protected
                             )
                             await session.execute(stmt)
                             await session.commit()
@@ -248,10 +292,32 @@ class GoogleSheetsService:
                     updated_count += 1
                     processed_count += 1
 
+                    # 상태 한글 변환
+                    status_kr_display = {
+                        "late": "지각",
+                        "early_leave": "조퇴",
+                        "leave": "외출",
+                        "vacation": "휴가",
+                        "absence": "결석"
+                    }.get(status_type, status_type)
+
+                    # 업데이트 상세 정보 추가
+                    detail = {
+                        "name": student_name,
+                        "status": status_kr_display,
+                        "start_date": start_date.strftime("%Y-%m-%d"),
+                        "end_date": end_date.strftime("%Y-%m-%d") if end_date else None,
+                        "time": parsed_time,
+                        "reason": reason,
+                        "is_immediate": is_immediate if start_date == today else False,
+                        "protected": is_protected
+                    }
+                    updated_details.append(detail)
+
                     logger.info(
                         f"[Google Sheets] {student_name}: {status_kr} "
                         f"({start_date}{f' ~ {end_date}' if end_date else ''}) "
-                        f"{'즉시 적용' if start_date == today else '예약됨'}"
+                        f"{'즉시 적용' if (start_date == today and is_immediate) else '예약됨'}"
                     )
 
                 except Exception as e:
@@ -267,6 +333,7 @@ class GoogleSheetsService:
                 "skipped": skipped_count,
                 "errors": error_count,
                 "error_details": errors,
+                "updated_details": updated_details,
                 "synced_at": datetime.now().isoformat()
             }
 

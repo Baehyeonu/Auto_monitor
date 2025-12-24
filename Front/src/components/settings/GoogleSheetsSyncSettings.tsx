@@ -111,6 +111,43 @@ export function GoogleSheetsSyncSettings() {
                   </div>
                 </div>
 
+                {/* 업데이트 상세 */}
+                {syncResult.updated_details && syncResult.updated_details.length > 0 && (
+                  <div className="rounded-lg border p-4 bg-blue-50 border-blue-200">
+                    <div className="font-semibold mb-3 text-blue-900">업데이트된 학생 목록:</div>
+                    <div className="space-y-2">
+                      {syncResult.updated_details.map((detail, idx) => (
+                        <div key={idx} className="flex items-start gap-3 text-sm bg-white rounded p-3 border">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{detail.name}</div>
+                            <div className="text-gray-600 space-y-1 mt-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-blue-600">{detail.status}</span>
+                                {detail.time && <span className="text-xs">({detail.time})</span>}
+                                {detail.protected && (
+                                  <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded">
+                                    보호됨
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs">
+                                {detail.start_date}
+                                {detail.end_date && detail.end_date !== detail.start_date && ` ~ ${detail.end_date}`}
+                              </div>
+                              {detail.reason && (
+                                <div className="text-xs text-gray-500">사유: {detail.reason}</div>
+                              )}
+                              {!detail.is_immediate && (
+                                <div className="text-xs text-purple-600">📅 예약됨</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* 오류 상세 */}
                 {syncResult.error_details && syncResult.error_details.length > 0 && (
                   <Alert className="border-yellow-200 bg-yellow-50">

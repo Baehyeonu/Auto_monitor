@@ -1,5 +1,16 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+export interface UpdatedDetail {
+  name: string
+  status: string
+  start_date: string
+  end_date: string | null
+  time: string | null
+  reason: string | null
+  is_immediate: boolean
+  protected: boolean
+}
+
 export interface SyncResult {
   success: boolean
   processed?: number
@@ -7,6 +18,7 @@ export interface SyncResult {
   skipped?: number
   errors?: number
   error_details?: string[]
+  updated_details?: UpdatedDetail[]
   synced_at?: string
   error?: string
 }

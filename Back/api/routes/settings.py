@@ -177,7 +177,7 @@ async def reset_all_status():
         raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
     
     try:
-        await DBService.reset_all_alert_status()
+        await DBService.reset_all_status_full()
         await system.monitor_service.broadcast_dashboard_update_now()
         return {"success": True, "message": "초기화가 완료되었습니다."}
     except Exception as e:
@@ -310,7 +310,6 @@ async def sync_google_sheets():
         raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
     return result
-
 
 
 

@@ -13,36 +13,7 @@ sys.path.insert(0, str(project_root))
 
 from database import DBService
 from database.connection import init_db
-import re
-
-
-def _extract_name_only(zep_name: str) -> str:
-    """
-    ZEP 이름에서 실제 이름만 추출 (다양한 구분자 지원)
-    SlackListener와 동일한 로직 사용
-    
-    Args:
-        zep_name: ZEP 이름
-        
-    Returns:
-        한글이 포함된 이름 부분만 반환
-    """
-    # 다양한 구분자로 분리: /, _, -, 공백 등
-    parts = re.split(r'[/_\-|\s]+', zep_name.strip())
-    parts = [part.strip() for part in parts if part.strip()]
-    
-    # 한글이 포함된 부분 찾기
-    for part in parts:
-        # 한글 유니코드 범위: 가-힣
-        if any('\uAC00' <= char <= '\uD7A3' for char in part):
-            return part
-    
-    # 한글이 없으면 첫 번째 부분 반환 (기본값)
-    if parts:
-        return parts[0]
-    
-    # 빈 문자열이면 그대로 반환
-    return zep_name.strip()
+from utils.name_utils import extract_name_only
 
 
 async def add_student_manually():
@@ -80,7 +51,7 @@ async def add_student_manually():
         return
     
     # 이름 추출 (Slack 메시지와 동일한 로직)
-    extracted_name = _extract_name_only(zep_name)
+    extracted_name = extract_name_only(zep_name)
     
     # 중복 확인 (추출된 이름으로)
     existing_zep = await db_service.get_student_by_zep_name(extracted_name)
@@ -282,7 +253,7 @@ async def add_students_bulk():
     for zep_name, discord_id in students_to_add:
         try:
             # 이름 추출 (Slack 메시지와 동일한 로직)
-            extracted_name = _extract_name_only(zep_name)
+            extracted_name = extract_name_only(zep_name)
             
             # 중복 확인 (추출된 이름으로)
             existing_zep = await db_service.get_student_by_zep_name(extracted_name)
@@ -351,4 +322,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\n👋 프로그램을 종료합니다.")
         sys.exit(0)
-

@@ -2,7 +2,7 @@
 학생 관리 API
 """
 from typing import Optional, List
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -16,8 +16,8 @@ from api.schemas.student import (
 )
 from api.schemas.response import PaginatedResponse
 from services.admin_manager import admin_manager
-from api.routes.settings import wait_for_system_instance
-from config import config
+from utils.system_utils import get_joined_today
+from utils.dashboard_utils import is_not_joined, has_special_status, is_left_today
 
 
 class SendDMRequest(BaseModel):
@@ -26,76 +26,6 @@ class SendDMRequest(BaseModel):
 
 router = APIRouter()
 db_service = DBService()
-
-
-async def _get_joined_today():
-    """오늘 접속한 학생 ID 집합 반환"""
-    system = await wait_for_system_instance(timeout=2)
-    if system and system.slack_listener:
-        return system.slack_listener.get_joined_students_today()
-    return set()
-
-
-async def _get_reset_time() -> Optional[datetime]:
-    """초기화 시간 반환"""
-    system = await wait_for_system_instance(timeout=2)
-    if system and system.monitor_service and system.monitor_service.reset_time:
-        return system.monitor_service.reset_time
-    
-    # reset_time이 없으면 config에서 계산
-    if config.DAILY_RESET_TIME:
-        from zoneinfo import ZoneInfo
-        try:
-            reset_time = datetime.strptime(config.DAILY_RESET_TIME, "%H:%M").time()
-            today = date.today()
-            seoul_tz = ZoneInfo("Asia/Seoul")
-            reset_dt_local = datetime.combine(today, reset_time).replace(tzinfo=seoul_tz)
-            now_local = datetime.now(seoul_tz)
-            
-            # 현재 시간이 초기화 시간 이전이면 어제 초기화 시간 사용
-            if now_local < reset_dt_local:
-                reset_dt_local = reset_dt_local - timedelta(days=1)
-            
-            return reset_dt_local.astimezone(timezone.utc)
-        except ValueError:
-            pass
-    
-    return None
-
-
-def _is_not_joined(student, joined_today: set, now: datetime, reset_time: Optional[datetime] = None) -> bool:
-    """
-    특이사항(미접속) 여부 판단
-
-    조건:
-    1. 휴가, 결석 상태인 학생은 특이사항으로 분류
-    2. 외출, 조퇴는 퇴장(left)으로 분류
-    3. 초기화 후 실제 입장 이벤트가 없었던 학생은 특이사항
-
-    Args:
-        student: Student 객체
-        joined_today: 오늘 접속한 학생 ID 집합
-        now: 현재 시간 (UTC)
-        reset_time: 초기화 시간 (UTC, None이면 config에서 계산)
-
-    Returns:
-        특이사항이면 True
-    """
-    # 관리자는 제외
-    if student.is_admin:
-        return False
-
-    # 외출, 조퇴, 휴가, 결석, 지각 등 status_type이 있으면 무조건 특이사항
-    if student.status_type in ['leave', 'early_leave', 'vacation', 'absence', 'late']:
-        return True
-
-    # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
-    if student.id in joined_today:
-        return False
-
-    # joined_today에 없으면 특이사항
-    # joined_today는 슬랙 동기화 시 실제로 오늘 입장 이벤트가 있었던 학생들만 포함됨
-    return True
 
 
 @router.get("", response_model=PaginatedResponse[StudentResponse])
@@ -108,8 +38,7 @@ async def get_students(
 ):
     """학생 목록 조회"""
     students = await db_service.get_all_students()
-    joined_today = await _get_joined_today()
-    reset_time = await _get_reset_time()
+    joined_today = await get_joined_today()
     
     is_admin_bool = None
     if is_admin is not None:
@@ -123,38 +52,34 @@ async def get_students(
     if status:
         if status == "camera_on":
             # 카메라 ON: 입장한 사람 중 상태가 없고 카메라 켠 학생만 (퇴장하지 않은 학생)
-            filtered_students = [s for s in filtered_students if not (s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']) and s.is_cam_on and s.id in joined_today and not s.last_leave_time]
+            filtered_students = [
+                s for s in filtered_students
+                if not has_special_status(s)
+                and s.is_cam_on
+                and s.id in joined_today
+                and not s.last_leave_time
+            ]
         elif status == "camera_off":
             # 카메라 OFF: 입장한 사람 중 상태가 없고 카메라 꺼진 학생만 (퇴장하지 않은 학생)
-            filtered_students = [s for s in filtered_students if not (s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']) and not s.is_cam_on and s.id in joined_today and not s.last_leave_time]
+            filtered_students = [
+                s for s in filtered_students
+                if not has_special_status(s)
+                and not s.is_cam_on
+                and s.id in joined_today
+                and not s.last_leave_time
+            ]
         elif status == "left":
             # 오늘 날짜에 퇴장한 학생만 필터링 (로컬 시간 기준, 상태가 없는 사람만)
-            today = date.today()
             result = []
             for s in filtered_students:
-                has_status = s.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
-                if not has_status and s.last_leave_time:
-                    leave_time = s.last_leave_time
-                    # naive datetime을 UTC로 가정하고 로컬 시간으로 변환
-                    if leave_time.tzinfo is None:
-                        leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
-                    else:
-                        leave_time_utc = leave_time
-                    # 로컬 시간대(Asia/Seoul, UTC+9)로 변환
-                    from zoneinfo import ZoneInfo
-                    leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
-                    leave_date = leave_time_local.date()
-
-                    # 오늘 퇴장한 학생
-                    if leave_date == today:
-                        result.append(s)
+                if not has_special_status(s) and is_left_today(s):
+                    result.append(s)
             filtered_students = result
         elif status == "not_joined":
             # 특이사항: 휴가, 결석 상태이거나 초기화 후 입장 이력이 없는 경우
-            now = datetime.now(timezone.utc)
             result = []
             for s in filtered_students:
-                if _is_not_joined(s, joined_today, now, reset_time):
+                if is_not_joined(s, joined_today):
                     result.append(s)
             filtered_students = result
     
@@ -170,11 +95,11 @@ async def get_students(
     now = datetime.now(timezone.utc)
     for student in paginated:
         # 미접속자 판단: 초기화 시간 이후 상태 변화 없거나, 퇴장 후 10시간 이상
-        is_not_joined = _is_not_joined(student, joined_today, now, reset_time)
+        not_joined_flag = is_not_joined(student, joined_today)
 
         # status 필터가 left인 경우, 퇴장한 학생이므로 not_joined는 false로 설정
         if status == "left":
-            is_not_joined = False
+            not_joined_flag = False
 
         student_dict = {
             "id": student.id,
@@ -195,7 +120,7 @@ async def get_students(
             "status_auto_reset_date": student.status_auto_reset_date,
             "created_at": student.created_at,
             "updated_at": student.updated_at,
-            "not_joined": is_not_joined
+            "not_joined": not_joined_flag
         }
         result_data.append(student_dict)
     
@@ -417,5 +342,3 @@ async def update_student_status(student_id: int, data: StudentStatusUpdate):
     
     updated_student = await db_service.get_student_by_id(student_id)
     return updated_student
-
-

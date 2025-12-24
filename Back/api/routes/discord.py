@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from database import DBService
 from api.routes.settings import wait_for_system_instance
+from utils.name_utils import extract_name_only
 
 router = APIRouter()
 db_service = DBService()
@@ -120,7 +121,7 @@ async def register_discord_members(request: MemberRegistrationRequest):
                 continue
 
             # Discord 이름에서 한글 이름만 추출
-            korean_name = system.discord_bot._extract_name_only(display_name)
+            korean_name = extract_name_only(display_name)
 
             # 한글 이름 중복 체크
             existing_zep = await db_service.get_student_by_zep_name(korean_name)

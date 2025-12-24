@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import Student
 from .connection import AsyncSessionLocal
 from config import config
+from utils.name_utils import extract_name_only
 
 # Levenshtein 거리 계산 라이브러리
 try:
@@ -47,46 +48,19 @@ def to_naive(dt: datetime) -> datetime:
     return dt.replace(tzinfo=None) if dt.tzinfo else dt
 
 
+def to_aware(dt: datetime) -> datetime:
+    """naive datetime을 UTC aware datetime으로 변환 (DB에서 읽은 UTC 기준 naive datetime용)"""
+    if dt.tzinfo is not None:
+        return dt
+    return dt.replace(tzinfo=timezone.utc)
+
+
 def to_utc(local_dt: datetime) -> datetime:
     """로컬 시간을 UTC로 올바르게 변환"""
     if local_dt.tzinfo is None:
         # naive datetime은 서울 시간으로 가정
         local_dt = local_dt.replace(tzinfo=SEOUL_TZ)
     return local_dt.astimezone(timezone.utc)
-
-
-def extract_name_only(zep_name: str) -> str:
-    """ZEP 이름에서 실제 이름만 추출 (slack_listener와 동일 로직)"""
-    if not zep_name:
-        return ""
-
-    # 구분자: /_-|공백 + .()@{}[]
-    parts = re.split(r'[/_\-|\s.()@{}\[\]]+', zep_name.strip())
-    parts = [part.strip() for part in parts if part.strip()]
-
-    role_keywords = {
-        "조교", "주강사", "멘토", "매니저",
-        "개발자", "학생", "수강생", "교육생",
-        "강사", "관리자", "운영자", "팀장",
-        "강의", "실습", "프로젝트", "팀"
-    }
-
-    korean_parts = []
-    for part in parts:
-        if any('\uAC00' <= char <= '\uD7A3' for char in part):
-            korean_parts.append(part)
-
-    filtered = [part for part in korean_parts if part not in role_keywords]
-
-    if filtered:
-        return filtered[-1]
-    elif korean_parts:
-        return korean_parts[-1]
-
-    if parts:
-        return parts[0]
-
-    return zep_name.strip()
 
 
 class DBService:
@@ -299,20 +273,33 @@ class DBService:
                 # 카메라가 ON이면 접속 종료 상태도 초기화 (재입장한 경우)
                 update_values["last_leave_time"] = None
 
-                # 히스토리 복원 중이 아닐 때만 지각/외출 상태를 초기화
+                # 히스토리 복원 중이 아닐 때만 상태를 초기화
                 if not is_restoring:
-                    # 지각/외출 상태인 경우 상태 변화가 있었으므로 정상으로 복귀
+                    # 지각/외출/조퇴 상태인 경우 카메라 ON 시 정상으로 복귀
+                    # (휴가, 결석은 하루 종일 유효하므로 유지)
                     # 먼저 현재 상태를 확인해야 하므로, 별도 쿼리로 처리
                     result = await session.execute(
-                        select(Student.status_type).where(Student.zep_name == zep_name)
+                        select(Student.status_type, Student.status_protected).where(Student.zep_name == zep_name)
                     )
-                    current_status = result.scalar_one_or_none()
+                    row = result.first()
+                    if row:
+                        current_status, is_protected = row
+                        # Google Sheets에서 설정한 보호된 상태가 아닌 경우에만 초기화
+                        # is_protected가 None이면 False로 간주 (보호되지 않음)
+                        protected = is_protected if is_protected is not None else False
 
-                    if current_status in ["late", "leave"]:
-                        # 지각/외출 상태를 정상으로 변경 (상태 변화가 있었으므로)
-                        update_values["status_type"] = None
-                        update_values["status_set_at"] = None
-                        update_values["alarm_blocked_until"] = None
+                        logger.info(
+                            f"[카메라 ON 상태 체크] {zep_name}: "
+                            f"status={current_status}, protected={protected}, "
+                            f"초기화 대상={not protected and current_status in ['late', 'leave', 'early_leave']}"
+                        )
+
+                        if not protected and current_status in ["late", "leave", "early_leave"]:
+                            # 지각/외출/조퇴 상태를 정상으로 변경 (카메라 ON = 복귀)
+                            update_values["status_type"] = None
+                            update_values["status_set_at"] = None
+                            update_values["alarm_blocked_until"] = None
+                            logger.info(f"[상태 초기화] {zep_name}: {current_status} → 정상")
             
             result = await session.execute(
                 update(Student)
@@ -374,8 +361,9 @@ class DBService:
             
             if student.last_alert_sent is None:
                 return True
-            
-            last_alert_utc = student.last_alert_sent if student.last_alert_sent.tzinfo else student.last_alert_sent.replace(tzinfo=timezone.utc)
+
+            # 타임존 올바르게 변환 (DB에서 읽은 naive datetime을 UTC aware로)
+            last_alert_utc = to_aware(student.last_alert_sent) if not student.last_alert_sent.tzinfo else student.last_alert_sent
             elapsed = utcnow() - last_alert_utc
             return elapsed.total_seconds() / 60 >= cooldown_minutes
     
@@ -383,38 +371,40 @@ class DBService:
     async def should_send_alert_batch(student_ids: List[int], cooldown_minutes: int) -> dict[int, bool]:
         """
         여러 학생의 알림 전송 가능 여부를 배치로 확인
-        
+
         Args:
             student_ids: 학생 ID 리스트
             cooldown_minutes: 쿨다운 시간 (분)
-            
+
         Returns:
             {student_id: bool} 딕셔너리
         """
         if not student_ids:
             return {}
-        
+
         async with AsyncSessionLocal() as session:
-            threshold_time = to_naive(utcnow() - timedelta(minutes=cooldown_minutes))
-            
             result = await session.execute(
                 select(Student.id, Student.last_alert_sent)
                 .where(Student.id.in_(student_ids))
             )
             students = result.all()
-            
+
             alert_status = {}
+
+            # 모든 학생 ID를 먼저 False로 초기화 (기본값: 알림 보내지 않음)
             for student_id in student_ids:
                 alert_status[student_id] = False
-            
+
+            # DB 조회 결과 처리
             for student_id, last_alert_sent in students:
                 if last_alert_sent is None:
-                    alert_status[student_id] = True
+                    alert_status[student_id] = True  # 알림 보낸 적 없음
                 else:
-                    last_alert_utc = last_alert_sent if last_alert_sent.tzinfo else last_alert_sent.replace(tzinfo=timezone.utc)
+                    # 타임존 올바르게 변환 (DB에서 읽은 naive datetime을 UTC aware로)
+                    last_alert_utc = to_aware(last_alert_sent) if not last_alert_sent.tzinfo else last_alert_sent
                     elapsed = utcnow() - last_alert_utc
                     alert_status[student_id] = elapsed.total_seconds() / 60 >= cooldown_minutes
-            
+
             return alert_status
     
     @staticmethod
@@ -623,6 +613,53 @@ class DBService:
 
             await session.commit()
             return now
+
+    @staticmethod
+    async def reset_all_status_full():
+        """
+        수동 초기화: 모든 상태/알림/예약/보호 필드를 초기화
+        (학생 등록 정보와 실제 카메라 상태는 유지)
+
+        Returns:
+            초기화 시간 (datetime)
+        """
+        async with AsyncSessionLocal() as session:
+            now = utcnow()
+
+            await session.execute(
+                update(Student)
+                .values(
+                    # 알림 관련 필드 리셋
+                    last_alert_sent=None,
+                    alert_count=0,
+                    response_status=None,
+                    response_time=None,
+                    last_absent_alert=None,
+                    last_leave_admin_alert=None,
+                    last_return_request_time=None,
+                    # 접속/외출 관련 필드 리셋
+                    is_absent=False,
+                    absent_type=None,
+                    last_leave_time=None,
+                    # 상태 관련 필드 리셋 (지각/외출/조퇴/휴가/결석)
+                    status_type=None,
+                    status_set_at=None,
+                    alarm_blocked_until=None,
+                    status_auto_reset_date=None,
+                    status_reason=None,
+                    status_end_date=None,
+                    status_protected=False,
+                    # 예약 상태 리셋
+                    scheduled_status_type=None,
+                    scheduled_status_time=None,
+                    # 상태 변경 시간 리셋
+                    last_status_change=None,
+                    updated_at=to_naive(now)
+                )
+            )
+
+            await session.commit()
+            return now
     
     @staticmethod
     async def reset_alert_status_preserving_recent(reset_time: datetime):
@@ -748,7 +785,11 @@ class DBService:
         """
         async with AsyncSessionLocal() as session:
             # 카메라 OFF 상태인 학생들만 last_status_change 리셋
-            camera_query = update(Student).where(Student.is_cam_on == False)
+            # 단, 특이사항(status_type)이 있는 학생들은 제외
+            camera_query = update(Student).where(
+                Student.is_cam_on == False,
+                Student.status_type.is_(None)  # 특이사항 없는 학생만
+            )
 
             # joined_student_ids가 제공되면 해당 학생들만 리셋
             if joined_student_ids is not None:
@@ -760,6 +801,8 @@ class DBService:
             await session.execute(
                 camera_query.values(
                     last_status_change=to_naive(reset_time),
+                    last_alert_sent=None,  # 알림 기록도 리셋
+                    alert_count=0,  # 알림 횟수도 리셋
                     updated_at=to_naive(utcnow())
                 )
             )
@@ -1194,29 +1237,6 @@ class DBService:
             await session.commit()
     
     @staticmethod
-    async def record_leave_admin_alerts_sent_batch(student_ids: List[int]):
-        """
-        여러 학생의 관리자 접속 종료 알림 전송을 배치로 기록
-        
-        Args:
-            student_ids: 학생 ID 리스트
-        """
-        if not student_ids:
-            return
-        
-        async with AsyncSessionLocal() as session:
-            now = to_naive(utcnow())
-            await session.execute(
-                update(Student)
-                .where(Student.id.in_(student_ids))
-                .values(
-                    last_leave_admin_alert=now,
-                    updated_at=now
-                )
-            )
-            await session.commit()
-    
-    @staticmethod
     async def get_admin_students() -> List[Student]:
         """관리자 권한을 가진 학생 목록"""
         async with AsyncSessionLocal() as session:
@@ -1533,4 +1553,3 @@ class DBService:
                         return True
             
             return False
-
