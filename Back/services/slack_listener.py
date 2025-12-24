@@ -42,8 +42,8 @@ class SlackListener:
         self.polling_interval = 5  # 5초마다 폴링
         self.polling_task = None
 
-        # 주기적 동기화 (10분마다 전체 상태 재동기화)
-        self.periodic_sync_interval = 600  # 10분
+        # 주기적 동기화 (1시간마다 상태 재동기화)
+        self.periodic_sync_interval = 3600  # 1시간
         self.periodic_sync_task = None
 
         # 초기화 중 이벤트 큐
@@ -841,7 +841,7 @@ class SlackListener:
                 await asyncio.sleep(5)  # 오류 발생 시 5초 대기
 
     async def _periodic_sync(self):
-        """10분마다 전체 상태 동기화 (빠른 연속 이벤트 누락 방지)"""
+        """1시간마다 전체 상태 동기화 (빠른 연속 이벤트 누락 방지)"""
         while True:
             try:
                 await asyncio.sleep(self.periodic_sync_interval)
