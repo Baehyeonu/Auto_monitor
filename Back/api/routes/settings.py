@@ -219,6 +219,8 @@ async def resume_alerts():
 @router.post("/sync")
 async def sync_from_slack():
     """슬랙 히스토리에서 최신 상태로 동기화"""
+    from services.google_sheets_service import google_sheets_service
+
     system = await wait_for_system_instance(timeout=5)
     
     if not system:
@@ -229,8 +231,20 @@ async def sync_from_slack():
     
     try:
         await system.slack_listener.restore_state_from_history(lookback_hours=24)
+        sheets_result = await google_sheets_service.sync_status_from_sheets()
+        if not sheets_result.get("success"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"구글 시트 동기화 실패: {sheets_result.get('error', '알 수 없는 오류')}"
+            )
         await system.monitor_service.broadcast_dashboard_update_now()
-        return {"success": True, "message": "슬랙에서 최신 상태로 동기화가 완료되었습니다."}
+        return {
+            "success": True,
+            "message": "슬랙/구글 시트 동기화가 완료되었습니다.",
+            "google_sheets": sheets_result
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"동기화 실패: {str(e)}")
 
@@ -310,6 +324,4 @@ async def sync_google_sheets():
         raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
     return result
-
-
 
