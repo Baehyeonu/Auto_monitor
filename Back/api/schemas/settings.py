@@ -26,6 +26,8 @@ class SettingsResponse(BaseModel):
     slack_app_token: Optional[str] = None
     slack_channel_id: Optional[str] = None
     google_sheets_url: Optional[str] = None
+    camp_name: Optional[str] = None
+    cohort_name: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -46,5 +48,6 @@ class SettingsUpdate(BaseModel):
     slack_app_token: Optional[str] = None
     slack_channel_id: Optional[str] = None
     google_sheets_url: Optional[str] = None
-
+    camp_name: Optional[str] = None
+    cohort_name: Optional[str] = None
 

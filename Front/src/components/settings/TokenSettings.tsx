@@ -16,6 +16,8 @@ export function TokenSettings() {
     slack_app_token: '',
     slack_channel_id: '',
     google_sheets_url: '',
+    camp_name: '',
+    cohort_name: '',
   })
 
   // settings가 로드되면 초기값 설정
@@ -28,6 +30,8 @@ export function TokenSettings() {
         slack_app_token: settings.slack_app_token || '',
         slack_channel_id: settings.slack_channel_id || '',
         google_sheets_url: settings.google_sheets_url || '',
+        camp_name: settings.camp_name || '',
+        cohort_name: settings.cohort_name || '',
       })
     }
   }, [settings])
@@ -142,6 +146,26 @@ export function TokenSettings() {
               value={formData.google_sheets_url}
               onChange={(e) => handleChange('google_sheets_url', e.target.value)}
               placeholder="https://docs.google.com/spreadsheets/d/..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="camp_name">캠프</Label>
+            <Input
+              id="camp_name"
+              type="text"
+              value={formData.camp_name}
+              onChange={(e) => handleChange('camp_name', e.target.value)}
+              placeholder="예: 창업가"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="cohort_name">기수</Label>
+            <Input
+              id="cohort_name"
+              type="text"
+              value={formData.cohort_name}
+              onChange={(e) => handleChange('cohort_name', e.target.value)}
+              placeholder="예: 2기"
             />
           </div>
         </div>

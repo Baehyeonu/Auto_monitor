@@ -20,6 +20,8 @@ export interface SettingsResponse {
   slack_app_token?: string | null
   slack_channel_id?: string | null
   google_sheets_url?: string | null
+  camp_name?: string | null
+  cohort_name?: string | null
 }
 
 export type SettingsUpdatePayload = Partial<
@@ -40,6 +42,8 @@ export type SettingsUpdatePayload = Partial<
     | 'slack_app_token'
     | 'slack_channel_id'
     | 'google_sheets_url'
+    | 'camp_name'
+    | 'cohort_name'
   >
 >
 
@@ -62,4 +66,3 @@ export interface StatusConfirmationData {
   reason?: string | null
   camp: string
 }
-
