@@ -17,8 +17,13 @@ PERSISTED_FIELDS: Dict[str, str] = {
     "lunch_start_time": "LUNCH_START_TIME",
     "lunch_end_time": "LUNCH_END_TIME",
     "daily_reset_time": "DAILY_RESET_TIME",
-    "status_parsing_enabled": "STATUS_PARSING_ENABLED",
-    "status_camp_filter": "STATUS_CAMP_FILTER",
+    # 연동 토큰 설정
+    "discord_bot_token": "DISCORD_BOT_TOKEN",
+    "discord_server_id": "DISCORD_SERVER_ID",
+    "slack_bot_token": "SLACK_BOT_TOKEN",
+    "slack_app_token": "SLACK_APP_TOKEN",
+    "slack_channel_id": "SLACK_CHANNEL_ID",
+    "google_sheets_url": "GOOGLE_SHEETS_URL",
 }
 
 SETTINGS_FILE = Path(__file__).parent.parent / "data" / "settings.json"

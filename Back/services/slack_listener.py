@@ -16,6 +16,7 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from config import config
 from database import DBService
 from api.websocket_manager import manager
+from utils.name_utils import extract_all_korean_names, extract_name_only
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 class SlackListener:
     def __init__(self, monitor_service=None):
         self.app = AsyncApp(token=config.SLACK_BOT_TOKEN)
+
         self.handler = None
         self.db_service = DBService()
         self.monitor_service = monitor_service
@@ -68,25 +70,6 @@ class SlackListener:
         self.pattern_join_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:entered|joined|connected)", re.IGNORECASE)
         self.pattern_leave_en = re.compile(r"([^\s\[\]:]+?)\s*(?:님이?)?\s*(?:has\s*)?(?:left|exited|disconnected)", re.IGNORECASE)
 
-        # 상태 파싱 패턴 (OZ헬프센터용)
-        # * 는 Slack 볼드체이므로 모든 패턴에서 선택적으로 매치
-        # 영문 이모지 코드도 함께 지원 (palm_tree 등)
-        self.pattern_status_header = re.compile(r':(?:큰_보라색_원|빨간색_원|야자수|큰_주황색_원|큰_노란색_원|palm_tree|large_purple_circle|red_circle|large_orange_circle|large_yellow_circle):\s*\*?(조퇴|결석|휴가|외출|지각)\*?')
-        self.pattern_camp_name = re.compile(r':(?:클립보드|clipboard):\s*\*?(.+?)\*?\s*\|\s*\*?(.+?)\*?(?:\n|$)')
-        self.pattern_single_date = re.compile(r':(?:날짜|date):\s*\*?일자\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_date_range = re.compile(r':(?:날짜|date):\s*\*?기간\*?:\s*\*?(\d{4}\.\d{1,2}\.\d{1,2})\s*~\s*(\d{4}\.\d{1,2}\.\d{1,2})\*?')
-        self.pattern_time_single = re.compile(r':시계_\d시:\s*\*?(?:퇴실 시간|시간)\*?:\s*(\d{1,2}:\d{2})')
-        self.pattern_reason = re.compile(r':(?:말풍선|speech_balloon):\s*\*?(.+?)\*?(?:\n|$)')
-
-        # 상태 타입 매핑
-        self.status_type_map = {
-            '조퇴': 'early_leave',
-            '외출': 'leave',
-            '결석': 'absence',
-            '휴가': 'vacation',
-            '지각': 'tardy'
-        }
-
         # 이벤트 핸들러 등록 (모든 메시지 타입 수신)
         self.app.message()(self._handle_all_messages)
     
@@ -125,62 +108,6 @@ class SlackListener:
 
         return False
     
-    def _extract_name_only(self, zep_name: str) -> str:
-        """ZEP 이름에서 실제 이름만 추출"""
-        if not zep_name:  # None 또는 빈 문자열 체크
-            return ""
-
-        # 먼저 * 제거 (Slack 강조 표시)
-        zep_name = zep_name.strip('*').strip()
-
-        # 구분자 확대: /_-|공백 + .()@{}[]*
-        parts = re.split(r'[/_\-|\s.()@{}\[\]\*]+', zep_name.strip())
-        parts = [part.strip() for part in parts if part.strip()]
-
-        korean_parts = []
-        for part in parts:
-            if any('\uAC00' <= char <= '\uD7A3' for char in part):
-                # 한글이 포함된 part에서 숫자 제거 (예: "14김오즈" -> "김오즈")
-                korean_only = ''.join(c for c in part if '\uAC00' <= c <= '\uD7A3')
-                if korean_only:
-                    korean_parts.append(korean_only)
-
-        filtered = [part for part in korean_parts if part not in self.role_keywords]
-
-        if filtered:
-            return filtered[-1]
-        elif korean_parts:
-            return korean_parts[-1]
-
-        if parts:
-            return parts[0]
-
-        return zep_name.strip()
-    
-    def _extract_all_korean_names(self, zep_name: str) -> list:
-        """ZEP 이름에서 모든 한글 이름 추출 (역순)"""
-        if not zep_name:  # None 또는 빈 문자열 체크
-            return []
-
-        # 먼저 * 제거 (Slack 강조 표시)
-        zep_name = zep_name.strip('*').strip()
-
-        # 구분자 확대: /_-|공백 + .()@{}[]!*
-        parts = re.split(r'[/_\-|\s.()@{}\[\]!\*]+', zep_name.strip())
-        parts = [part.strip() for part in parts if part.strip()]
-
-        korean_parts = []
-        for part in parts:
-            if any('\uAC00' <= char <= '\uD7A3' for char in part):
-                # 한글이 포함된 part에서 숫자 제거 (예: "14김오즈" -> "김오즈")
-                korean_only = ''.join(c for c in part if '\uAC00' <= c <= '\uD7A3')
-                if korean_only:
-                    korean_parts.append(korean_only)
-
-        filtered = [part for part in korean_parts if part not in self.role_keywords]
-        target_parts = filtered if filtered else korean_parts
-
-        return list(reversed(target_parts)) if target_parts else [zep_name.strip()]
     
     def _is_duplicate_event(self, student_id: int, event_type: str, message_ts: float) -> bool:
         """중복 이벤트 체크 (0.01초 이내 동일 이벤트만 무시)"""
@@ -207,7 +134,7 @@ class SlackListener:
             
             for student in students:
                 self.student_cache[student.zep_name] = student.id
-                korean_names = self._extract_all_korean_names(student.zep_name)
+                korean_names = extract_all_korean_names(student.zep_name, role_keywords=self.role_keywords)
                 for korean_name in korean_names:
                     if korean_name not in self.student_cache:
                         self.student_cache[korean_name] = student.id
@@ -233,7 +160,8 @@ class SlackListener:
         """모든 메시지 핸들러 (일반 메시지 + 봇 메시지)"""
         try:
             channel = message.get("channel", "")
-            text = message.get("text", "")
+            # blocks에서 텍스트 추출 (attachments 포함)
+            text = self._extract_text_from_blocks(message)
             message_ts_str = message.get("ts", "")
             message_ts = float(message_ts_str) if message_ts_str else 0
             subtype = message.get("subtype", "")
@@ -246,11 +174,6 @@ class SlackListener:
             # 기존 채널: 카메라/입장/퇴장
             if channel == config.SLACK_CHANNEL_ID:
                 asyncio.create_task(self._process_message_async(text, message_ts))
-
-            # 상태 채널: 조퇴/외출/결석/휴가
-            elif (config.STATUS_PARSING_ENABLED and
-                  channel == config.SLACK_STATUS_CHANNEL_ID):
-                asyncio.create_task(self._process_status_message(text, message_ts))
         except Exception as e:
             logger.error(f"[Slack 메시지 핸들러 오류] {e}", exc_info=True)
     
@@ -282,7 +205,7 @@ class SlackListener:
                 zep_name_raw = match_on.group(1)
                 if self._should_ignore_name(zep_name_raw):
                     return
-                zep_name = self._extract_name_only(zep_name_raw)
+                zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                 await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
@@ -292,7 +215,7 @@ class SlackListener:
                 zep_name_raw = match_off.group(1)
                 if self._should_ignore_name(zep_name_raw):
                     return
-                zep_name = self._extract_name_only(zep_name_raw)
+                zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                 await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
@@ -302,7 +225,7 @@ class SlackListener:
                 zep_name_raw = match_leave.group(1)
                 if self._should_ignore_name(zep_name_raw):
                     return
-                zep_name = self._extract_name_only(zep_name_raw)
+                zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                 await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts)
                 return
 
@@ -312,7 +235,7 @@ class SlackListener:
                 zep_name_raw = match_join.group(1)
                 if self._should_ignore_name(zep_name_raw):
                     return
-                zep_name = self._extract_name_only(zep_name_raw)
+                zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                 await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
                 return
         except Exception as e:
@@ -323,7 +246,7 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
 
-            for name in self._extract_all_korean_names(zep_name_raw):
+            for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                 if name in self.student_cache:
                     student_id = self.student_cache[name]
                     student = await self.db_service.get_student_by_id(student_id)
@@ -334,7 +257,7 @@ class SlackListener:
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    for name in self._extract_all_korean_names(zep_name_raw):
+                    for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
                             break
@@ -343,7 +266,7 @@ class SlackListener:
                     student_id = student.id
                     matched_name = student.zep_name
                     self.student_cache[matched_name] = student_id
-                    for name in self._extract_all_korean_names(zep_name_raw):
+                    for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                         if name not in self.student_cache:
                             self.student_cache[name] = student_id
 
@@ -353,7 +276,6 @@ class SlackListener:
                 if normalized_name not in self.logged_match_failures:
                     self.logged_match_failures.add(normalized_name)
                     logger.warning(f"[매칭 실패 - 카메라 ON] ZEP 이름: '{zep_name_raw}'")
-                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
@@ -363,8 +285,17 @@ class SlackListener:
                 self.joined_students_today.add(student_id)
             await self.db_service.clear_absent_status(student_id)
             # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
-            timestamp_to_use = message_timestamp if add_to_joined_today else None
-            success = await self.db_service.update_camera_status(matched_name, True, timestamp_to_use, is_restoring=self.is_restoring)
+            # message_timestamp가 None이면 현재 시간 사용 (실시간 이벤트 처리)
+            if add_to_joined_today:
+                timestamp_to_use = message_timestamp if message_timestamp else datetime.now(timezone.utc)
+            else:
+                timestamp_to_use = None
+            success = await self.db_service.update_camera_status(
+                matched_name,
+                True,
+                timestamp_to_use,
+                is_restoring=self.is_restoring
+            )
 
             if not success:
                 return
@@ -388,7 +319,7 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
             
-            for name in self._extract_all_korean_names(zep_name_raw):
+            for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                 if name in self.student_cache:
                     student_id = self.student_cache[name]
                     student = await self.db_service.get_student_by_id(student_id)
@@ -399,7 +330,7 @@ class SlackListener:
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    for name in self._extract_all_korean_names(zep_name_raw):
+                    for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
                             break
@@ -408,7 +339,7 @@ class SlackListener:
                     student_id = student.id
                     matched_name = student.zep_name
                     self.student_cache[matched_name] = student_id
-                    for name in self._extract_all_korean_names(zep_name_raw):
+                    for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                         if name not in self.student_cache:
                             self.student_cache[name] = student_id
 
@@ -418,7 +349,6 @@ class SlackListener:
                 if normalized_name not in self.logged_match_failures:
                     self.logged_match_failures.add(normalized_name)
                     logger.warning(f"[매칭 실패 - 카메라 OFF] ZEP 이름: '{zep_name_raw}'")
-                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "camera_off", message_ts):
@@ -427,8 +357,17 @@ class SlackListener:
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             # 오늘 이벤트가 아니면 last_status_change 업데이트 안함
-            timestamp_to_use = message_timestamp if add_to_joined_today else None
-            success = await self.db_service.update_camera_status(matched_name, False, timestamp_to_use, is_restoring=self.is_restoring)
+            # message_timestamp가 None이면 현재 시간 사용 (실시간 이벤트 처리)
+            if add_to_joined_today:
+                timestamp_to_use = message_timestamp if message_timestamp else datetime.now(timezone.utc)
+            else:
+                timestamp_to_use = None
+            success = await self.db_service.update_camera_status(
+                matched_name,
+                False,
+                timestamp_to_use,
+                is_restoring=self.is_restoring
+            )
 
             if not success:
                 return
@@ -452,7 +391,7 @@ class SlackListener:
             student_id = None
             matched_name = zep_name
 
-            extracted = self._extract_all_korean_names(zep_name_raw)
+            extracted = extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords)
 
             for name in extracted:
                 if name in self.student_cache:
@@ -465,7 +404,7 @@ class SlackListener:
             if not student_id:
                 student = await self.db_service.get_student_by_zep_name(zep_name_raw)
                 if not student:
-                    extracted_names = self._extract_all_korean_names(zep_name_raw)
+                    extracted_names = extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords)
                     for name in extracted_names:
                         student = await self.db_service.get_student_by_zep_name(name)
                         if student:
@@ -475,7 +414,7 @@ class SlackListener:
                     student_id = student.id
                     matched_name = student.zep_name
                     self.student_cache[matched_name] = student_id
-                    for name in self._extract_all_korean_names(zep_name_raw):
+                    for name in extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords):
                         if name not in self.student_cache:
                             self.student_cache[name] = student_id
 
@@ -485,7 +424,6 @@ class SlackListener:
                 if normalized_name not in self.logged_match_failures:
                     self.logged_match_failures.add(normalized_name)
                     logger.warning(f"[매칭 실패 - 입장] ZEP 이름: '{zep_name_raw}'")
-                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_join", message_ts):
@@ -518,7 +456,7 @@ class SlackListener:
         try:
             student_id = None
             matched_name = zep_name
-            korean_names = self._extract_all_korean_names(zep_name_raw)
+            korean_names = extract_all_korean_names(zep_name_raw, role_keywords=self.role_keywords)
             
             # 1. 캐시에서 찾기 (한글 이름 부분 포함)
             for name in korean_names:
@@ -555,7 +493,6 @@ class SlackListener:
                 if normalized_name not in self.logged_match_failures:
                     self.logged_match_failures.add(normalized_name)
                     logger.warning(f"[매칭 실패 - 퇴장] ZEP 이름: '{zep_name_raw}'")
-                    logger.debug(f"  - 추출된 이름들: {self._extract_all_korean_names(zep_name_raw)}")
                 return
 
             if self._is_duplicate_event(student_id, "user_leave", message_ts):
@@ -606,8 +543,6 @@ class SlackListener:
     async def restore_state_from_history(self, lookback_hours: int = 24):
         try:
             # 디버깅: 현재 config 값 출력
-            print(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                  f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
 
             self.is_restoring = True
             self.joined_students_today.clear()
@@ -665,12 +600,7 @@ class SlackListener:
 
                 if not response.get("ok"):
                     error = response.get("error", "unknown_error")
-                    print(f"   ⚠️ Slack 채널 조회 실패: {error}")
-                    if error == "channel_not_found":
-                        print(f"   💡 해결 방법:")
-                        print(f"      1. Bot을 채널에 초대했는지 확인")
-                        print(f"      2. 채널 ID가 올바른지 확인 (현재: {config.SLACK_CHANNEL_ID})")
-                        print(f"      3. Private 채널인 경우 Bot이 초대되어야 합니다")
+                    logger.warning(f"Slack 채널 조회 실패: {error}")
                     break
 
                 batch = response.get("messages", [])
@@ -680,37 +610,8 @@ class SlackListener:
                 if not cursor:
                     break
 
-            # 상태 채널 메시지도 조회 (활성화된 경우)
-            status_messages = []
-            if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
-                status_cursor = None
-                while True:
-                    status_response = await self.app.client.conversations_history(
-                        channel=config.SLACK_STATUS_CHANNEL_ID,
-                        oldest=str(oldest_ts),
-                        limit=1000,
-                        cursor=status_cursor
-                    )
-
-                    if not status_response.get("ok"):
-                        error = status_response.get("error", "unknown_error")
-                        logger.error(f"[상태 채널 조회 실패] {error}")
-                        if error == "channel_not_found":
-                            logger.error(f"   💡 Bot이 상태 채널({config.SLACK_STATUS_CHANNEL_ID})에 초대되지 않았습니다.")
-                        break
-
-                    batch = status_response.get("messages", [])
-                    status_messages.extend(batch)
-
-                    status_cursor = status_response.get("response_metadata", {}).get("next_cursor")
-                    if not status_cursor:
-                        break
-
-                if status_messages:
-                    status_messages.sort(key=lambda msg: float(msg.get("ts", 0)))
-                    logger.info(f"[상태 채널 복원] {len(status_messages)}개 메시지 조회 완료")
-
-            if not messages and not status_messages:
+            if not messages:
+                logger.info("[동기화] 메시지 없음 - 종료")
                 return
             
             messages.sort(key=lambda msg: float(msg.get("ts", 0)))
@@ -723,6 +624,10 @@ class SlackListener:
             
             for message in messages:
                 text = message.get("text", "")
+                if not text:
+                    text = self._extract_text_from_blocks(message)
+                if not text:
+                    continue
                 message_ts = float(message.get("ts", 0))
                 message_dt = datetime.fromtimestamp(message_ts, tz=timezone.utc) if message_ts > 0 else None
 
@@ -730,7 +635,7 @@ class SlackListener:
                 match_on = self.pattern_cam_on.search(text) or self.pattern_cam_on_en.search(text)
                 if match_on:
                     zep_name_raw = match_on.group(1)
-                    zep_name = self._extract_name_only(zep_name_raw)
+                    zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                     add_to_joined = message_ts >= today_reset_ts
                     await self._handle_camera_on(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_on_count += 1
@@ -741,7 +646,7 @@ class SlackListener:
                 match_off = self.pattern_cam_off.search(text) or self.pattern_cam_off_en.search(text)
                 if match_off:
                     zep_name_raw = match_off.group(1)
-                    zep_name = self._extract_name_only(zep_name_raw)
+                    zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                     add_to_joined = message_ts >= today_reset_ts
                     await self._handle_camera_off(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     camera_off_count += 1
@@ -752,7 +657,7 @@ class SlackListener:
                 match_leave = self.pattern_leave.search(text) or self.pattern_leave_en.search(text)
                 if match_leave:
                     zep_name_raw = match_leave.group(1)
-                    zep_name = self._extract_name_only(zep_name_raw)
+                    zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                     add_to_joined = message_ts >= today_reset_ts
                     await self._handle_user_leave(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=add_to_joined)
                     leave_count += 1
@@ -763,7 +668,7 @@ class SlackListener:
                 match_join = self.pattern_join.search(text) or self.pattern_join_en.search(text)
                 if match_join:
                     zep_name_raw = match_join.group(1)
-                    zep_name = self._extract_name_only(zep_name_raw)
+                    zep_name = extract_name_only(zep_name_raw, role_keywords=self.role_keywords)
                     if message_ts >= today_reset_ts:
                         await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts)
                         join_count += 1
@@ -771,17 +676,6 @@ class SlackListener:
                         await self._handle_user_join(zep_name_raw, zep_name, message_dt, message_ts, add_to_joined_today=False)
                     processed_count += 1
                     continue
-
-            # 상태 채널 메시지 처리
-            status_processed_count = 0
-            for message in status_messages:
-                text = message.get("text", "")
-                message_ts = float(message.get("ts", 0))
-                await self._process_status_message(text, message_ts)
-                status_processed_count += 1
-
-            if status_processed_count > 0:
-                logger.info(f"[상태 채널 복원] {status_processed_count}개 메시지 처리 완료")
 
             # 백엔드 재시작/동기화 시: 응답 관련 필드만 초기화 (쿨다운 타이머는 유지)
             await self.db_service.reset_alert_fields_partial()
@@ -818,6 +712,7 @@ class SlackListener:
             
         except Exception as e:
             import traceback
+            logger.error(f"[restore_state_from_history 오류] {e}", exc_info=True)
             traceback.print_exc()
         finally:
             self.is_restoring = False
@@ -834,12 +729,6 @@ class SlackListener:
             )
 
             await self._refresh_student_cache()
-
-            # 디버깅: 현재 config 값 출력 (print로 강제 출력)
-            print(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                  f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
-            logger.info(f"[Config 확인] STATUS_PARSING_ENABLED={config.STATUS_PARSING_ENABLED}, "
-                       f"SLACK_STATUS_CHANNEL_ID={config.SLACK_STATUS_CHANNEL_ID}")
 
             # 상태 채널 접근 테스트
             if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
@@ -929,6 +818,8 @@ class SlackListener:
                             continue
 
                         text = msg.get("text", "")
+                        if not text:
+                            text = self._extract_text_from_blocks(msg)
                         message_ts = float(msg.get("ts", 0))
 
                         # 이미 처리한 메시지는 스킵 (타임스탬프 기준)
@@ -936,42 +827,11 @@ class SlackListener:
                             continue
 
                         # 메시지 처리
-                        logger.debug(f"[폴링으로 발견] text={text[:50]}")
                         await self._process_message_async(text, message_ts)
                         processed_count += 1
 
                     if processed_count > 0:
                         logger.info(f"[폴링 완료] {processed_count}개 누락 메시지 처리")
-
-                # 상태 채널 폴링 (활성화된 경우)
-                if config.STATUS_PARSING_ENABLED and config.SLACK_STATUS_CHANNEL_ID:
-                    status_response = await self.app.client.conversations_history(
-                        channel=config.SLACK_STATUS_CHANNEL_ID,
-                        oldest=str(self.last_poll_timestamp),
-                        limit=100
-                    )
-
-                    if not status_response.get("ok"):
-                        logger.error(f"[상태 채널 폴링 실패] Slack API 오류: {status_response.get('error')}")
-                    else:
-                        status_messages = status_response.get("messages", [])
-                        status_messages.reverse()
-
-                        status_processed_count = 0
-                        for msg in status_messages:
-                            text = msg.get("text", "")
-                            message_ts = float(msg.get("ts", 0))
-
-                            # 이미 처리한 메시지는 스킵
-                            if message_ts <= self.last_poll_timestamp:
-                                continue
-
-                            # 상태 메시지 처리 (일반 메시지도 처리, subtype 체크 안함)
-                            await self._process_status_message(text, message_ts)
-                            status_processed_count += 1
-
-                        if status_processed_count > 0:
-                            logger.info(f"[상태 채널] {status_processed_count}개 메시지 파싱 완료")
 
                 # 타임스탬프 업데이트
                 self.last_poll_timestamp = now_ts
@@ -997,177 +857,76 @@ class SlackListener:
                 logger.error(f"[주기 동기화 오류] {e}", exc_info=True)
                 await asyncio.sleep(60)  # 오류 발생 시 1분 후 재시도
 
-    async def _process_status_message(self, text: str, message_ts: float):
-        """OZ헬프센터 상태 메시지 파싱"""
-        try:
-            if not text or not config.STATUS_PARSING_ENABLED:
-                return
+    def _extract_text_from_blocks(self, message: dict) -> str:
+        """Slack blocks에서 텍스트 추출 (attachments 포함)"""
+        text_parts = []
 
-            # Step 1: 상태 타입 파싱
-            match_status = self.pattern_status_header.search(text)
-            if not match_status:
-                return
+        # 1. message.blocks 처리 (일반 메시지)
+        blocks = message.get("blocks", [])
+        if blocks:
+            for block in blocks:
+                block_type = block.get("type")
 
-            status_kr = match_status.group(1)  # "조퇴", "결석" 등
-            status_type = self.status_type_map.get(status_kr)
-            if not status_type:
-                return
+                # section 블록
+                if block_type == "section":
+                    if "text" in block:
+                        text_parts.append(block["text"].get("text", ""))
+                    if "fields" in block:
+                        for field in block["fields"]:
+                            text_parts.append(field.get("text", ""))
 
-            # Step 2: 캠프/이름 파싱
-            match_camp = self.pattern_camp_name.search(text)
-            if not match_camp:
-                logger.warning(f"[상태 파싱] 캠프/이름 추출 실패: {text[:100]}")
-                return
+                # context 블록
+                elif block_type == "context":
+                    elements = block.get("elements", [])
+                    for elem in elements:
+                        if elem.get("type") == "mrkdwn":
+                            text_parts.append(elem.get("text", ""))
 
-            camp_name = match_camp.group(1).strip()
-            student_name = match_camp.group(2).strip()
+                # rich_text 블록 (사용자가 직접 입력한 메시지)
+                elif block_type == "rich_text":
+                    elements = block.get("elements", [])
+                    for element in elements:
+                        if element.get("type") == "rich_text_section":
+                            inner_elements = element.get("elements", [])
+                            for inner in inner_elements:
+                                if inner.get("type") == "text":
+                                    text_parts.append(inner.get("text", ""))
+                                elif inner.get("type") == "emoji":
+                                    text_parts.append(f":{inner.get('name', '')}:")
+                                elif inner.get("type") == "user":
+                                    text_parts.append(f"<@{inner.get('user_id', '')}>")
+                        elif element.get("type") == "rich_text_list":
+                            # 리스트 처리 (필요시)
+                            pass
 
-            # Step 3: 캠프 필터링
-            if config.STATUS_CAMP_FILTER:
-                if camp_name != config.STATUS_CAMP_FILTER:
-                    # 다른 캠프는 조용히 무시
-                    return
+        # 2. message.attachments[].blocks 처리 (봇 메시지)
+        attachments = message.get("attachments", [])
+        for attachment in attachments:
+            att_blocks = attachment.get("blocks", [])
+            for block in att_blocks:
+                block_type = block.get("type")
 
-            # Step 4: 학생 매칭
-            student_id = None
-            matched_name = student_name
+                # section 블록
+                if block_type == "section":
+                    if "text" in block:
+                        text_parts.append(block["text"].get("text", ""))
+                    if "fields" in block:
+                        for field in block["fields"]:
+                            text_parts.append(field.get("text", ""))
 
-            # 캐시 조회
-            for name in self._extract_all_korean_names(student_name):
-                if name in self.student_cache:
-                    student_id = self.student_cache[name]
-                    student = await self.db_service.get_student_by_id(student_id)
-                    if student:
-                        matched_name = student.zep_name
-                    break
+                # context 블록
+                elif block_type == "context":
+                    elements = block.get("elements", [])
+                    for elem in elements:
+                        if elem.get("type") == "mrkdwn":
+                            text_parts.append(elem.get("text", ""))
 
-            # DB 조회
-            if not student_id:
-                student = await self.db_service.get_student_by_zep_name(student_name)
-                if not student:
-                    for name in self._extract_all_korean_names(student_name):
-                        student = await self.db_service.get_student_by_zep_name(name)
-                        if student:
-                            break
+        # 3. 추출된 텍스트가 있으면 반환
+        if text_parts:
+            return "\n".join(text_parts)
 
-                if student:
-                    student_id = student.id
-                    matched_name = student.zep_name
-                    self.student_cache[student_name] = student_id
-
-            if not student_id:
-                logger.warning(f"[상태 파싱] 학생 매칭 실패: '{student_name}' (캠프: {camp_name})")
-                return
-
-            # Step 5: 날짜/기간 파싱
-            start_date = None
-            end_date = None
-
-            # 기간 형식 먼저 시도
-            match_range = self.pattern_date_range.search(text)
-            if match_range:
-                start_str = match_range.group(1)
-                end_str = match_range.group(2)
-                start_date = datetime.strptime(start_str, "%Y.%m.%d").date()
-                end_date = datetime.strptime(end_str, "%Y.%m.%d").date()
-            else:
-                # 단일 일자
-                match_single = self.pattern_single_date.search(text)
-                if match_single:
-                    date_str = match_single.group(1)
-                    start_date = datetime.strptime(date_str, "%Y.%m.%d").date()
-
-            if not start_date:
-                return
-
-            # Step 6: 시간 파싱
-            time_str = None
-            match_time = self.pattern_time_single.search(text)
-            if match_time:
-                time_str = match_time.group(1)  # "15:15"
-
-            # Step 7: 사유 파싱
-            reason = None
-            match_reason = self.pattern_reason.search(text)
-            if match_reason:
-                reason = match_reason.group(1).strip()
-
-            # Step 8: 적용 시간 계산
-            from zoneinfo import ZoneInfo
-            SEOUL_TZ = ZoneInfo("Asia/Seoul")
-
-            scheduled_utc = None
-
-            # 휴가/결석/지각: 즉시 적용 (status_time = None)
-            # 조퇴/외출: 시간 있으면 예약, 없으면 즉시
-            if status_type in ['absence', 'vacation', 'tardy']:
-                # 휴가/결석/지각: 즉시 적용
-                scheduled_utc = None
-            elif status_type in ['early_leave', 'leave'] and time_str:
-                # 조퇴/외출: 특정 시간에 예약
-                hour, minute = map(int, time_str.split(':'))
-                scheduled_dt = datetime.combine(start_date, datetime.min.time())
-                scheduled_dt = scheduled_dt.replace(hour=hour, minute=minute, tzinfo=SEOUL_TZ)
-                scheduled_utc = scheduled_dt.astimezone(timezone.utc).replace(tzinfo=None)
-            else:
-                # 시간 정보 없는 조퇴/외출: 즉시 적용
-                scheduled_utc = None
-
-            # Step 9: DB 저장
-            protected = status_type in ['absence', 'vacation']  # 결석/휴가는 보호
-            success = await self.db_service.set_student_status(
-                student_id=student_id,
-                status_type=status_type,
-                status_time=scheduled_utc,
-                reason=reason,
-                end_date=end_date,
-                protected=protected
-            )
-
-            if not success:
-                logger.error(f"[상태 저장 실패] {matched_name} - {status_kr}")
-                return
-
-            # Step 10: 로그
-            date_display = f"{start_date}"
-            if end_date and end_date != start_date:
-                date_display = f"{start_date} ~ {end_date}"
-
-            time_display = f" {time_str}" if time_str else ""
-            reason_display = f" ({reason})" if reason else ""
-
-            logger.info(
-                f"[상태 파싱] {matched_name} | {status_kr} | "
-                f"{date_display}{time_display}{reason_display}"
-            )
-
-            # Step 11: 웹소켓 브로드캐스트 (확인 팝업용)
-            asyncio.create_task(self._broadcast_status_confirmation(
-                student_id=student_id,
-                student_name=matched_name,
-                status_type=status_type,
-                status_kr=status_kr,
-                start_date=str(start_date),
-                end_date=str(end_date) if end_date else None,
-                time=time_str,
-                reason=reason,
-                camp=camp_name
-            ))
-
-        except Exception as e:
-            logger.error(f"[상태 메시지 파싱 오류] {e}", exc_info=True)
-
-    async def _broadcast_status_confirmation(self, **data):
-        """상태 변경 확인 팝업 브로드캐스트"""
-        try:
-            from api.websocket_manager import manager
-            await manager.broadcast_to_dashboard({
-                "type": "status_confirmation",
-                "payload": data,
-                "timestamp": datetime.now().isoformat()
-            })
-        except Exception as e:
-            logger.error(f"[상태 확인 브로드캐스트 오류] {e}", exc_info=True)
+        # 4. blocks가 없으면 일반 text 사용
+        return message.get("text", "")
 
     async def stop(self):
         # 폴링 태스크 종료

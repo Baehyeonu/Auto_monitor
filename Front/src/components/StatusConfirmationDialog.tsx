@@ -45,10 +45,7 @@ export function StatusConfirmationDialog() {
       if (!response.ok) {
         throw new Error('롤백 실패')
       }
-
-      console.log('[StatusConfirmation] 상태 변경이 취소되었습니다.')
     } catch (error) {
-      console.error('[StatusConfirmation] 롤백 오류:', error)
       alert('상태 변경 취소에 실패했습니다.')
     } finally {
       setIsRollingBack(false)

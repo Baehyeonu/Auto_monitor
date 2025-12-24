@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ConnectionStatus } from '@/components/logs/ConnectionStatus'
+import { NotificationCenter } from '@/components/notifications/NotificationCenter'
 
 interface HeaderProps {
   isConnected: boolean
@@ -34,9 +35,12 @@ export function Header({ isConnected }: HeaderProps) {
           실시간 모니터링 대시보드
         </h1>
       </div>
-      <div className="flex flex-col items-end gap-2 text-right text-sm text-muted-foreground">
-        <ConnectionStatus isConnected={isConnected} />
-        <span>{currentTime}</span>
+      <div className="flex items-center gap-4">
+        <NotificationCenter />
+        <div className="flex flex-col items-end gap-2 text-right text-sm text-muted-foreground">
+          <ConnectionStatus isConnected={isConnected} />
+          <span>{currentTime}</span>
+        </div>
       </div>
     </header>
   )

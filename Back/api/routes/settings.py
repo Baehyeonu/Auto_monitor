@@ -69,9 +69,13 @@ async def get_settings():
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
         "admin_count": len(admins),
-        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
-        "status_camp_filter": config.STATUS_CAMP_FILTER,
-        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
+        # 연동 토큰 설정
+        "discord_bot_token": config.DISCORD_BOT_TOKEN,
+        "discord_server_id": config.DISCORD_SERVER_ID,
+        "slack_bot_token": config.SLACK_BOT_TOKEN,
+        "slack_app_token": config.SLACK_APP_TOKEN,
+        "slack_channel_id": config.SLACK_CHANNEL_ID,
+        "google_sheets_url": config.GOOGLE_SHEETS_URL,
     }
 
 
@@ -103,10 +107,20 @@ async def update_settings(data: SettingsUpdate):
     if data.daily_reset_time is not None:
         config.DAILY_RESET_TIME = data.daily_reset_time
         updated_fields['daily_reset_time'] = data.daily_reset_time
-    if data.status_parsing_enabled is not None:
-        config.STATUS_PARSING_ENABLED = data.status_parsing_enabled
-    if data.status_camp_filter is not None:
-        config.STATUS_CAMP_FILTER = data.status_camp_filter
+
+    # 연동 토큰 설정
+    if data.discord_bot_token is not None:
+        config.DISCORD_BOT_TOKEN = data.discord_bot_token
+    if data.discord_server_id is not None:
+        config.DISCORD_SERVER_ID = data.discord_server_id
+    if data.slack_bot_token is not None:
+        config.SLACK_BOT_TOKEN = data.slack_bot_token
+    if data.slack_app_token is not None:
+        config.SLACK_APP_TOKEN = data.slack_app_token
+    if data.slack_channel_id is not None:
+        config.SLACK_CHANNEL_ID = data.slack_channel_id
+    if data.google_sheets_url is not None:
+        config.GOOGLE_SHEETS_URL = data.google_sheets_url
 
     save_persisted_settings(config)
 
@@ -130,9 +144,13 @@ async def update_settings(data: SettingsUpdate):
         "discord_connected": bool(config.DISCORD_BOT_TOKEN),
         "slack_connected": bool(config.SLACK_BOT_TOKEN),
         "admin_count": len(admins),
-        "status_parsing_enabled": config.STATUS_PARSING_ENABLED,
-        "status_camp_filter": config.STATUS_CAMP_FILTER,
-        "slack_status_channel_configured": bool(config.SLACK_STATUS_CHANNEL_ID)
+        # 연동 토큰 설정
+        "discord_bot_token": config.DISCORD_BOT_TOKEN,
+        "discord_server_id": config.DISCORD_SERVER_ID,
+        "slack_bot_token": config.SLACK_BOT_TOKEN,
+        "slack_app_token": config.SLACK_APP_TOKEN,
+        "slack_channel_id": config.SLACK_CHANNEL_ID,
+        "google_sheets_url": config.GOOGLE_SHEETS_URL,
     }
 
 
@@ -159,7 +177,7 @@ async def reset_all_status():
         raise HTTPException(status_code=503, detail="모니터링 서비스가 실행 중이 아닙니다.")
     
     try:
-        await DBService.reset_all_alert_status()
+        await DBService.reset_all_status_full()
         await system.monitor_service.broadcast_dashboard_update_now()
         return {"success": True, "message": "초기화가 완료되었습니다."}
     except Exception as e:
@@ -281,65 +299,17 @@ async def update_ignore_keywords(data: IgnoreKeywordsUpdate):
     return {"keywords": existing_data["ignore_keywords"]}
 
 
-@router.post("/status-rollback/{student_id}")
-async def rollback_status_change(student_id: int):
-    """상태 변경 취소 (확인 팝업에서 '취소' 버튼)"""
-    try:
-        # 학생 조회
-        student = await DBService.get_student_by_id(student_id)
-        if not student:
-            raise HTTPException(status_code=404, detail="학생을 찾을 수 없습니다.")
+@router.post("/sync-google-sheets")
+async def sync_google_sheets():
+    """Google Sheets에서 상태 데이터 동기화"""
+    from services.google_sheets_service import google_sheets_service
 
-        # 상태 제거 (None으로 설정)
-        success = await DBService.set_student_status(
-            student_id=student_id,
-            status_type=None,
-            status_time=None,
-            reason=None,
-            end_date=None,
-            protected=False
-        )
+    result = await google_sheets_service.sync_status_from_sheets()
 
-        if not success:
-            raise HTTPException(status_code=400, detail="상태 롤백에 실패했습니다.")
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
-        # 대시보드 업데이트 브로드캐스트
-        system = await wait_for_system_instance(timeout=2)
-        if system and system.monitor_service:
-            await system.monitor_service.broadcast_dashboard_update_now()
+    return result
 
-        return {"success": True, "message": "상태 변경이 취소되었습니다."}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"롤백 실패: {str(e)}")
-
-
-class TestStatusMessageRequest(BaseModel):
-    text: str
-
-
-@router.post("/test-status-parsing")
-async def test_status_parsing(data: TestStatusMessageRequest):
-    """상태 파싱 테스트용 엔드포인트 (curl로 테스트 가능)"""
-    system = await wait_for_system_instance(timeout=5)
-
-    if not system:
-        raise HTTPException(status_code=503, detail="시스템이 초기화되지 않았습니다.")
-
-    if not system.slack_listener:
-        raise HTTPException(status_code=503, detail="Slack 리스너가 실행 중이 아닙니다.")
-
-    try:
-        import time
-        # 현재 timestamp 생성
-        message_ts = time.time()
-
-        # Slack 리스너의 파싱 메서드 직접 호출
-        await system.slack_listener._process_status_message(data.text, message_ts)
-
-        return {"success": True, "message": "파싱 요청을 처리했습니다. 로그를 확인하세요."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"파싱 실패: {str(e)}")
 
 

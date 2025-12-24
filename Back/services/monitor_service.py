@@ -3,15 +3,19 @@
 주기적으로 학생들의 카메라 상태를 체크하고 알림을 전송합니다.
 """
 import asyncio
+import logging
 from datetime import datetime, time, timezone, date
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 from config import config
 from database import DBService
-from database.db_service import now_seoul, to_utc, SEOUL_TZ
+from database.db_service import now_seoul, SEOUL_TZ
 from utils.holiday_checker import HolidayChecker
 from api.websocket_manager import manager
+from utils.dashboard_utils import build_overview
+
+logger = logging.getLogger(__name__)
 
 
 class MonitorService:
@@ -252,12 +256,10 @@ class MonitorService:
             # 점심 종료 감지 (점심 시간에서 벗어났을 때)
             # current_time_obj >= lunch_end이면 점심 시간이 아님
             if current_time_obj >= lunch_end and self.last_lunch_check == "in_lunch":
-                # 점심 종료 시간을 서울 시간으로 생성 후 UTC로 변환
-                lunch_end_local = datetime.strptime(f"{now.strftime('%Y-%m-%d')} {config.LUNCH_END_TIME}", "%Y-%m-%d %H:%M")
-                lunch_end_local = lunch_end_local.replace(tzinfo=ZoneInfo("Asia/Seoul"))
-                lunch_end_dt = lunch_end_local.astimezone(timezone.utc)
                 # 카메라 OFF 상태인 모든 학생의 타이머 리셋 (joined_student_ids=None)
-                await self.db_service.reset_camera_off_timers(lunch_end_dt, joined_student_ids=None)
+                # UTC 시간 사용 (DB는 모든 시간을 UTC로 저장)
+                from database.db_service import utcnow
+                await self.db_service.reset_camera_off_timers(utcnow(), joined_student_ids=None)
                 self.last_lunch_check = "after_lunch"
                 await manager.broadcast_system_log(
                     level="info",
@@ -270,15 +272,19 @@ class MonitorService:
     
     async def _check_students(self):
         """학생들의 카메라 상태 체크"""
-        now = datetime.now()
-        current_time = now.strftime("%H:%M")
-        current_time_obj = now.time()
+        now_utc = datetime.now(timezone.utc)
+        now_local = now_seoul()
+        current_time_obj = now_local.time()
 
-        await self._check_daily_reset(now)
+        await self._check_daily_reset(now_local)
         await self._check_scheduled_status()
 
         # 수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관)
-        await self._check_schedule_events(now)
+        await self._check_schedule_events(now_local)
+
+        # Slack 히스토리 복원 중에는 알림 체크를 건너뜀
+        if self.slack_listener and self.slack_listener.is_restoring:
+            return
 
         # 모니터링 활성화 체크
         if not self.is_monitoring_active():
@@ -286,7 +292,7 @@ class MonitorService:
 
         # 워밍업 시간 체크
         if self.start_time:
-            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds() / 60
+            elapsed = (now_utc - self.start_time).total_seconds() / 60
             if elapsed < self.warmup_minutes:
                 return
 
@@ -325,7 +331,6 @@ class MonitorService:
         class_start_time_utc = None
         try:
             class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
-            from database.db_service import now_seoul, SEOUL_TZ
             today_seoul = now_seoul().date()
             class_start_dt = datetime.combine(today_seoul, class_start)
             class_start_dt_seoul = class_start_dt.replace(tzinfo=SEOUL_TZ)
@@ -337,7 +342,8 @@ class MonitorService:
             if not student.discord_id:
                 continue
 
-            if self.discord_bot.is_admin(student.discord_id):
+            # DB의 is_admin 필드로 관리자 확인 (Discord 봇 관리자 권한과 별개)
+            if student.is_admin:
                 continue
 
             if student.id not in joined_today:
@@ -359,12 +365,12 @@ class MonitorService:
                 continue
 
             # 수업 시작 전에 입장한 학생은 수업 시작 시간부터 카운트
-            if class_start_time_utc:
+            if class_start_time_utc and student.last_status_change:
                 last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
                 # 학생이 수업 시작 전에 입장했고, 현재 시간이 수업 시작 이후라면
-                if last_change_utc < class_start_time_utc and datetime.now(timezone.utc) >= class_start_time_utc:
+                if last_change_utc < class_start_time_utc and now_utc >= class_start_time_utc:
                     # 수업 시작 시간부터 경과 시간 계산
-                    elapsed_from_class_start = int((datetime.now(timezone.utc) - class_start_time_utc).total_seconds() / 60)
+                    elapsed_from_class_start = int((now_utc - class_start_time_utc).total_seconds() / 60)
                     # 임계값을 넘지 않았으면 제외
                     if elapsed_from_class_start < self.camera_off_threshold:
                         continue
@@ -387,14 +393,20 @@ class MonitorService:
             if self.is_dm_paused:
                 continue
 
+            if not student.last_status_change:
+                continue
+
             last_change_utc = student.last_status_change if student.last_status_change.tzinfo else student.last_status_change.replace(tzinfo=timezone.utc)
-            elapsed_minutes = int((datetime.now(timezone.utc) - last_change_utc).total_seconds() / 60)
+            elapsed_minutes = int((now_utc - last_change_utc).total_seconds() / 60)
 
             if student.alert_count == 0:
                 # 첫 번째 알림: 수강생에게만
                 success = await self.discord_bot.send_camera_alert(student)
 
                 if success:
+                    # 알림 발송 즉시 DB 업데이트 (쿨타임 적용)
+                    await self.db_service.record_alert_sent(student.id)
+
                     await manager.broadcast_new_alert(
                         alert_id=0,
                         student_id=student.id,
@@ -416,6 +428,9 @@ class MonitorService:
                 await self.discord_bot.send_camera_alert(student)
                 await self.discord_bot.send_camera_alert_to_admin(student)
 
+                # 알림 발송 즉시 DB 업데이트 (쿨타임 적용)
+                await self.db_service.record_alert_sent(student.id)
+
                 await manager.broadcast_new_alert(
                     alert_id=0,
                     student_id=student.id,
@@ -432,10 +447,6 @@ class MonitorService:
                     student_name=student.zep_name,
                     student_id=student.id
                 )
-        
-        if students_to_alert:
-            alerted_ids = [s.id for s in students_to_alert]
-            await self.db_service.record_alerts_sent_batch(alerted_ids)
         
     async def _check_left_students(self):
         """접속 종료 후 복귀하지 않은 학생들 체크"""
@@ -479,11 +490,14 @@ class MonitorService:
             alerted_ids = []
             
             for student in students_to_alert:
+                if not student.last_leave_time:
+                    continue
+
                 await self.discord_bot.send_leave_alert_to_admin(student)
                 alerted_ids.append(student.id)
-                
+
                 last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
-                elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
+                elapsed_minutes = int((now_utc - last_leave_time_utc).total_seconds() / 60)
                 
                 await manager.broadcast_new_alert(
                     alert_id=0,
@@ -513,12 +527,15 @@ class MonitorService:
             
             if should_alert:
                 success = await self.discord_bot.send_absent_alert(student)
-                
+
                 if success:
                     await self.db_service.record_absent_alert_sent(student.id)
-                    
+
+                    if not student.last_leave_time:
+                        continue
+
                     last_leave_time_utc = student.last_leave_time if student.last_leave_time.tzinfo else student.last_leave_time.replace(tzinfo=timezone.utc)
-                    elapsed_minutes = int((datetime.now(timezone.utc) - last_leave_time_utc).total_seconds() / 60)
+                    elapsed_minutes = int((now_utc - last_leave_time_utc).total_seconds() / 60)
                     absent_type_text = "외출" if student.absent_type == "leave" else "조퇴"
                     
                     await manager.broadcast_new_alert(
@@ -591,18 +608,20 @@ class MonitorService:
             return
         
         from database.db_service import SEOUL_TZ
-        now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        scheduled_dt = datetime.combine(now.date(), self.daily_reset_time)
+        now_local = now_seoul()
+        today_str = now_local.strftime("%Y-%m-%d")
+        scheduled_dt = datetime.combine(now_local.date(), self.daily_reset_time)
         # 서울 시간으로 설정 후 UTC로 변환
         scheduled_dt_seoul = scheduled_dt.replace(tzinfo=SEOUL_TZ)
         scheduled_dt_utc = scheduled_dt_seoul.astimezone(timezone.utc)
         
-        if now >= scheduled_dt:
+        if now_local >= scheduled_dt_seoul:
             all_students = await self.db_service.get_all_students()
             
             has_recent_students = False
             for student in all_students:
+                if not student.last_status_change:
+                    continue
                 if student.last_status_change.tzinfo is None:
                     last_change_utc = student.last_status_change.replace(tzinfo=timezone.utc)
                 else:
@@ -671,7 +690,7 @@ class MonitorService:
         scheduled_dt_seoul = scheduled_dt.replace(tzinfo=SEOUL_TZ)
         reset_time_utc = scheduled_dt_seoul.astimezone(timezone.utc)
 
-        if now >= scheduled_dt:
+        if now >= scheduled_dt_seoul:
             self.is_resetting = True
             await manager.broadcast_system_log(
                 level="info",
@@ -703,104 +722,12 @@ class MonitorService:
                 message=f"일일 초기화가 완료되었습니다. ({scheduled_dt.strftime('%Y-%m-%d %H:%M')})"
             )
     
-    def _is_not_joined(self, student, joined_today: set, now: datetime) -> bool:
-        """
-        특이사항(미접속) 여부 판단
-
-        조건:
-        1. 휴가, 결석 상태인 학생은 특이사항으로 분류
-        2. 외출, 조퇴는 퇴장(left)으로 분류
-        3. 초기화 후 실제 입장 이벤트가 없었던 학생은 특이사항
-
-        Args:
-            student: Student 객체
-            joined_today: 오늘 접속한 학생 ID 집합
-            now: 현재 시간 (UTC)
-
-        Returns:
-            특이사항이면 True
-        """
-        # 관리자는 제외
-        if student.is_admin:
-            return False
-
-        # 외출, 조퇴, 휴가, 결석, 지각 등 status_type이 있으면 무조건 특이사항
-        if student.status_type in ['leave', 'early_leave', 'vacation', 'absence', 'late']:
-            return True
-
-        # joined_today에 포함되어 있으면 접속한 것으로 간주 (특이사항 아님)
-        if student.id in joined_today:
-            return False
-
-        # joined_today에 없으면 특이사항
-        # joined_today는 슬랙 동기화 시 실제로 오늘 입장 이벤트가 있었던 학생들만 포함됨
-        return True
-    
     async def _get_dashboard_overview(self) -> dict:
         """대시보드 현황 데이터 수집"""
         students = await self.db_service.get_all_students()
-        
-        now = datetime.now(timezone.utc)
-        threshold_minutes = self.camera_off_threshold
-        
-        camera_on = 0
-        camera_off = 0
-        left = 0
-        not_joined = 0
-        threshold_exceeded = 0
-        
-        non_admin_students = [s for s in students if not s.is_admin]
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
-        today = date.today()
-        
-        from zoneinfo import ZoneInfo
-        
-        for student in non_admin_students:
-            # 상태(status_type)가 있는 사람은 특이사항에만 포함 (카메라, 퇴장에서 제외)
-            has_status = student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']
-
-            # 1. 특이사항 체크
-            is_not_joined = self._is_not_joined(student, joined_today, now)
-            if is_not_joined:
-                not_joined += 1
-
-            # 2. 퇴장 체크 (상태가 있는 사람 제외)
-            if not has_status and student.last_leave_time:
-                leave_time = student.last_leave_time
-                if leave_time.tzinfo is None:
-                    leave_time_utc = leave_time.replace(tzinfo=timezone.utc)
-                else:
-                    leave_time_utc = leave_time
-                leave_time_local = leave_time_utc.astimezone(ZoneInfo("Asia/Seoul"))
-                leave_date = leave_time_local.date()
-
-                # 오늘 퇴장한 학생
-                if leave_date == today:
-                    left += 1
-
-            # 3. 카메라 상태 체크 (입장한 사람 중 상태가 없고 퇴장하지 않은 사람만)
-            if not has_status and student.id in joined_today and not student.last_leave_time:
-                if student.is_cam_on:
-                    camera_on += 1
-                else:
-                    camera_off += 1
-                    if student.last_status_change:
-                        last_change_utc = student.last_status_change
-                        if last_change_utc.tzinfo is None:
-                            last_change_utc = last_change_utc.replace(tzinfo=timezone.utc)
-                        elapsed = (now - last_change_utc).total_seconds() / 60
-                        if elapsed >= threshold_minutes:
-                            threshold_exceeded += 1
-        
-        return {
-            "total_students": len(non_admin_students),
-            "camera_on": camera_on,
-            "camera_off": camera_off,
-            "left": left,
-            "not_joined_today": not_joined,
-            "threshold_exceeded": threshold_exceeded,
-            "last_updated": now.isoformat()
-        }
+        now = datetime.now(timezone.utc)
+        return build_overview(students, joined_today, now, self.camera_off_threshold)
     
     async def broadcast_dashboard_update_now(self):
         """대시보드 업데이트 즉시 브로드캐스트 (상태 변경 시 호출)"""
@@ -821,4 +748,3 @@ class MonitorService:
                 pass
             
             await asyncio.sleep(1)
-

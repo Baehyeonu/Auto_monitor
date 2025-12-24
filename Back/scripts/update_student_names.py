@@ -5,36 +5,13 @@ Slack 메시지와 동일한 로직으로 이름을 추출하여 DB를 업데이
 import asyncio
 import sys
 import os
-import re
 
 # 프로젝트 루트를 Python 경로에 추가
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from database import DBService, init_db
-
-
-def _extract_name_only(zep_name: str) -> str:
-    """
-    ZEP 이름에서 실제 이름만 추출 (다양한 구분자 지원)
-    SlackListener와 동일한 로직 사용
-    """
-    # 다양한 구분자로 분리: /, _, -, 공백 등
-    parts = re.split(r'[/_\-|\s]+', zep_name.strip())
-    parts = [part.strip() for part in parts if part.strip()]
-    
-    # 한글이 포함된 부분 찾기
-    for part in parts:
-        # 한글 유니코드 범위: 가-힣
-        if any('\uAC00' <= char <= '\uD7A3' for char in part):
-            return part
-    
-    # 한글이 없으면 첫 번째 부분 반환 (기본값)
-    if parts:
-        return parts[0]
-    
-    # 빈 문자열이면 그대로 반환
-    return zep_name.strip()
+from utils.name_utils import extract_name_only
 
 
 async def update_student_names():
@@ -61,7 +38,7 @@ async def update_student_names():
     
     for student in students:
         original_name = student.zep_name
-        extracted_name = _extract_name_only(original_name)
+        extracted_name = extract_name_only(original_name)
         
         if original_name != extracted_name:
             # 이름이 다르면 업데이트
@@ -111,4 +88,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
