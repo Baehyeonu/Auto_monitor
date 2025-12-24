@@ -24,6 +24,8 @@ PERSISTED_FIELDS: Dict[str, str] = {
     "slack_app_token": "SLACK_APP_TOKEN",
     "slack_channel_id": "SLACK_CHANNEL_ID",
     "google_sheets_url": "GOOGLE_SHEETS_URL",
+    "camp_name": "CAMP_NAME",
+    "cohort_name": "COHORT_NAME",
 }
 
 SETTINGS_FILE = Path(__file__).parent.parent / "data" / "settings.json"
@@ -59,5 +61,4 @@ def save_persisted_settings(config, extra_values: Dict[str, Any] | None = None) 
         payload.update(extra_values)
 
     SETTINGS_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
 

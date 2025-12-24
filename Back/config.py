@@ -39,6 +39,8 @@ class Config(BaseSettings):
     FACE_DETECTION_THRESHOLD: int = 3
 
     GOOGLE_SHEETS_URL: Optional[str] = None
+    CAMP_NAME: Optional[str] = None
+    COHORT_NAME: Optional[str] = None
 
     DATABASE_URL: str = "sqlite+aiosqlite:///students.db"
     
@@ -77,4 +79,3 @@ try:
     load_persisted_settings(config)
 except Exception as e:
     print(f"[Config] persisted settings load failed: {e}")
-

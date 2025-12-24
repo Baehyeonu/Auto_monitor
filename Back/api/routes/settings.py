@@ -76,6 +76,8 @@ async def get_settings():
         "slack_app_token": config.SLACK_APP_TOKEN,
         "slack_channel_id": config.SLACK_CHANNEL_ID,
         "google_sheets_url": config.GOOGLE_SHEETS_URL,
+        "camp_name": config.CAMP_NAME,
+        "cohort_name": config.COHORT_NAME,
     }
 
 
@@ -121,6 +123,10 @@ async def update_settings(data: SettingsUpdate):
         config.SLACK_CHANNEL_ID = data.slack_channel_id
     if data.google_sheets_url is not None:
         config.GOOGLE_SHEETS_URL = data.google_sheets_url
+    if data.camp_name is not None:
+        config.CAMP_NAME = data.camp_name
+    if data.cohort_name is not None:
+        config.COHORT_NAME = data.cohort_name
 
     save_persisted_settings(config)
 
@@ -151,6 +157,8 @@ async def update_settings(data: SettingsUpdate):
         "slack_app_token": config.SLACK_APP_TOKEN,
         "slack_channel_id": config.SLACK_CHANNEL_ID,
         "google_sheets_url": config.GOOGLE_SHEETS_URL,
+        "camp_name": config.CAMP_NAME,
+        "cohort_name": config.COHORT_NAME,
     }
 
 
@@ -324,4 +332,3 @@ async def sync_google_sheets():
         raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
     return result
-

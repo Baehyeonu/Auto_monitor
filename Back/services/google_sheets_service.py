@@ -20,6 +20,20 @@ class GoogleSheetsService:
     def __init__(self):
         self.db_service = DBService()
 
+    def _normalize_text(self, value: str) -> str:
+        return re.sub(r"\s+", "", value).lower()
+
+    def _normalize_cohort(self, value: str) -> str:
+        normalized = self._normalize_text(value)
+        return re.sub(r"(기수|기)$", "", normalized)
+
+    def _first_non_empty(self, row: Dict[str, str], keys: List[str]) -> str:
+        for key in keys:
+            value = row.get(key, "").strip()
+            if value:
+                return value
+        return ""
+
     def _parse_korean_time(self, time_str: str) -> Optional[str]:
         """
         한국어 시간 형식을 24시간 형식으로 변환
@@ -159,6 +173,10 @@ class GoogleSheetsService:
 
             now_local = now_seoul()
             today = now_local.date()
+            camp_filter = (config.CAMP_NAME or "").strip()
+            cohort_filter = (config.COHORT_NAME or "").strip()
+            camp_filter_norm = self._normalize_text(camp_filter) if camp_filter else ""
+            cohort_filter_norm = self._normalize_cohort(cohort_filter) if cohort_filter else ""
 
             for row in rows:
                 try:
@@ -171,6 +189,18 @@ class GoogleSheetsService:
                     if not student_name or not status_kr or not start_date_str:
                         skipped_count += 1
                         continue
+
+                    if camp_filter_norm:
+                        row_camp = self._first_non_empty(row, ["캠프", "캠프명", "캠프 이름"])
+                        if not row_camp or self._normalize_text(row_camp) != camp_filter_norm:
+                            skipped_count += 1
+                            continue
+
+                    if cohort_filter_norm:
+                        row_cohort = self._first_non_empty(row, ["기수", "기수명", "회차"])
+                        if not row_cohort or self._normalize_cohort(row_cohort) != cohort_filter_norm:
+                            skipped_count += 1
+                            continue
 
                     # 상태 타입 매핑
                     status_type = self._map_status_type(status_kr)
