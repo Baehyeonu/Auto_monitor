@@ -56,6 +56,10 @@ function getStatusBadge(student: Student) {
         label: '결석',
         className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/50',
       },
+      not_joined: {
+        label: '미접속',
+        className: 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/50',
+      },
     }
 
     const config = statusConfig[student.status_type]
@@ -298,7 +302,11 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
                       마지막 상태 변경:{' '}
                       {student.last_status_change
                         ? formatKoreanTime(student.last_status_change)
-                        : '정보 없음'}
+                        : student.status_set_at
+                          ? formatKoreanTime(student.status_set_at)
+                          : student.not_joined
+                            ? '입장 기록 없음'
+                            : '정보 없음'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -375,4 +383,3 @@ export function StudentList({ students, isLoading, onRefresh, pagination, onSear
     </>
   )
 }
-

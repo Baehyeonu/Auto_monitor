@@ -8,7 +8,7 @@ export interface Student {
   last_leave_time?: string | null
   is_absent: boolean
   absent_type?: 'leave' | 'early_leave' | null
-  status_type?: 'late' | 'leave' | 'early_leave' | 'vacation' | 'absence' | null
+  status_type?: 'late' | 'leave' | 'early_leave' | 'vacation' | 'absence' | 'not_joined' | null
   status_set_at?: string | null
   alarm_blocked_until?: string | null
   status_auto_reset_date?: string | null
@@ -22,4 +22,3 @@ export interface PaginatedResponse<T> {
   page: number
   limit: number
 }
-

@@ -358,6 +358,9 @@ class DBService:
             
             if not student:
                 return False
+
+            if student.status_type == "not_joined":
+                return True
             
             if student.last_alert_sent is None:
                 return True
@@ -965,6 +968,68 @@ class DBService:
                 )
             )
             await session.commit()
+
+    @staticmethod
+    async def set_not_joined_status(student_id: int) -> bool:
+        """
+        미접속 상태 설정 (수업 시작 후 입장하지 않은 학생)
+
+        Args:
+            student_id: 학생 ID
+
+        Returns:
+            업데이트 성공 여부
+        """
+        async with AsyncSessionLocal() as session:
+            now = utcnow()
+            result = await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .where(Student.status_type.is_(None))
+                .values(
+                    status_type="not_joined",
+                    status_set_at=to_naive(now),
+                    alarm_blocked_until=None,
+                    status_auto_reset_date=None,
+                    status_reason=None,
+                    status_end_date=None,
+                    status_protected=False,
+                    updated_at=to_naive(now)
+                )
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    @staticmethod
+    async def clear_not_joined_status(student_id: int) -> bool:
+        """
+        미접속 상태 해제
+
+        Args:
+            student_id: 학생 ID
+
+        Returns:
+            업데이트 성공 여부
+        """
+        async with AsyncSessionLocal() as session:
+            now = utcnow()
+            result = await session.execute(
+                update(Student)
+                .where(Student.id == student_id)
+                .where(Student.status_type == "not_joined")
+                .values(
+                    status_type=None,
+                    status_set_at=None,
+                    alarm_blocked_until=None,
+                    status_auto_reset_date=None,
+                    status_reason=None,
+                    status_end_date=None,
+                    status_protected=False,
+                    updated_at=to_naive(now)
+                )
+            )
+            await session.commit()
+            return result.rowcount > 0
     
     @staticmethod
     async def record_return_request(student_id: int):
@@ -1443,6 +1508,14 @@ class DBService:
 
             # 예약된 상태 가져오기
             status_type = student.scheduled_status_type
+
+            if status_type == "leave":
+                grace_minutes = 10
+                if student.is_cam_on:
+                    return False
+                if student.scheduled_status_time:
+                    if student.scheduled_status_time + timedelta(minutes=grace_minutes) > now_naive:
+                        return False
 
             # 상태별 알람 금지 로직
             alarm_blocked_until = None
