@@ -25,16 +25,45 @@ function getStatusBadge(student: Student) {
 
   // 상태 관리(status_type)가 있으면 우선 표시
   if (student.status_type) {
-    const statusLabels = {
-      late: '지각',
-      leave: '외출',
-      early_leave: '조퇴',
-      vacation: '휴가',
-      absence: '결석',
-      not_joined: '미접속',
+    const statusConfig: Record<string, { label: string; className: string }> = {
+      late: {
+        label: '지각',
+        className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/50',
+      },
+      leave: {
+        label: '외출',
+        className: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/50',
+      },
+      early_leave: {
+        label: '조퇴',
+        className: 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/50',
+      },
+      vacation: {
+        label: '휴가',
+        className: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/50',
+      },
+      absence: {
+        label: '결석',
+        className: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/50',
+      },
+      not_joined: {
+        label: '미접속',
+        className: 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/50',
+      },
     }
-    const label = statusLabels[student.status_type] || student.status_type
-    return <Badge variant="outline" className="border-purple-500 text-purple-600">{label}</Badge>
+    const config = statusConfig[student.status_type]
+    if (config) {
+      return (
+        <Badge variant="outline" className={config.className}>
+          {config.label}
+        </Badge>
+      )
+    }
+    return (
+      <Badge variant="outline" className="border-purple-500 text-purple-600">
+        {student.status_type}
+      </Badge>
+    )
   }
 
   // 오늘 퇴장한 학생 (백엔드에서 계산된 값 사용) - 특이사항보다 우선
