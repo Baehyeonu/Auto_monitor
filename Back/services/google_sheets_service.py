@@ -4,7 +4,7 @@ Google Sheets CSV 동기화 서비스
 import re
 import csv
 import aiohttp
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import Optional, List, Dict, Any
 from config import config
 from database import DBService
@@ -86,6 +86,11 @@ class GoogleSheetsService:
         """
         한국어 상태를 영어 상태 타입으로 매핑
         """
+        if not status_kr:
+            return None
+
+        normalized = status_kr.strip()
+
         status_mapping = {
             "지각": "late",
             "조퇴": "early_leave",
@@ -94,7 +99,15 @@ class GoogleSheetsService:
             "결석": "absence",
             "병원 진료 및 건강 악화": "absence"
         }
-        return status_mapping.get(status_kr)
+
+        if normalized in status_mapping:
+            return status_mapping[normalized]
+
+        for prefix, mapped in status_mapping.items():
+            if normalized.startswith(prefix):
+                return mapped
+
+        return None
 
     async def fetch_csv_data(self, sheets_url: str) -> List[Dict[str, str]]:
         """
@@ -222,7 +235,12 @@ class GoogleSheetsService:
 
                     # 시간 파싱 (선택)
                     time_str = row.get('입실 / 퇴실 예정 시간', '').strip()
+                    leave_start_str = row.get('외출 시작', '').strip()
                     parsed_time = self._parse_korean_time(time_str) if time_str else None
+                    leave_start_time = self._parse_korean_time(leave_start_str) if leave_start_str else None
+                    if status_type == "leave" and leave_start_time:
+                        parsed_time = leave_start_time
+
                     time_obj = None
                     if parsed_time:
                         try:
@@ -264,7 +282,8 @@ class GoogleSheetsService:
                         elif status_type == "leave":
                             if time_obj:
                                 scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
-                                if scheduled_dt < now_local:
+                                grace_minutes = 10
+                                if scheduled_dt + timedelta(minutes=grace_minutes) < now_local:
                                     skipped_count += 1
                                     continue
                                 scheduled_time_str = parsed_time

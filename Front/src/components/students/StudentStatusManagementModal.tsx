@@ -75,7 +75,9 @@ export function StudentStatusManagementModal({
   onBack,
   onUpdated,
 }: StudentStatusManagementModalProps) {
-  const [selectedStatus, setSelectedStatus] = useState<StatusType>(student?.status_type || null)
+  const [selectedStatus, setSelectedStatus] = useState<StatusType>(
+    student?.status_type && student.status_type !== 'not_joined' ? student.status_type : null
+  )
   const [statusTime, setStatusTime] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -100,6 +102,7 @@ export function StudentStatusManagementModal({
     }
   }
 
+  const isNotJoinedStatus = student.status_type === 'not_joined'
   const currentStatusOption = STATUS_OPTIONS.find((opt) => opt.value === student.status_type)
 
   return (
@@ -118,7 +121,18 @@ export function StudentStatusManagementModal({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">현재 상태</p>
-                {currentStatusOption ? (
+                {isNotJoinedStatus ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/50">
+                      미접속
+                    </Badge>
+                    {student.status_set_at && (
+                      <span className="text-xs text-muted-foreground">
+                        설정: {formatKoreanTime(student.status_set_at)}
+                      </span>
+                    )}
+                  </div>
+                ) : currentStatusOption ? (
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className={currentStatusOption.color}>
                       {currentStatusOption.icon}
@@ -225,4 +239,3 @@ export function StudentStatusManagementModal({
     </Dialog>
   )
 }
-

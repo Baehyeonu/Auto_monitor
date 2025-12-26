@@ -281,6 +281,14 @@ class SlackListener:
             if self._is_duplicate_event(student_id, "camera_on", message_ts):
                 return
 
+            if (
+                add_to_joined_today
+                and not self.is_restoring
+                and self.monitor_service
+                and self.monitor_service._is_class_time()
+            ):
+                await self.db_service.clear_not_joined_status(student_id)
+
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
             await self.db_service.clear_absent_status(student_id)
@@ -429,6 +437,14 @@ class SlackListener:
             if self._is_duplicate_event(student_id, "user_join", message_ts):
                 return
             
+            if (
+                add_to_joined_today
+                and not self.is_restoring
+                and self.monitor_service
+                and self.monitor_service._is_class_time()
+            ):
+                await self.db_service.clear_not_joined_status(student_id)
+
             if add_to_joined_today:
                 self.joined_students_today.add(student_id)
 

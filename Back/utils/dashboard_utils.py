@@ -14,6 +14,7 @@ STATUS_TYPES: Set[str] = {
     "early_leave",
     "vacation",
     "absence",
+    "not_joined",
 }
 
 

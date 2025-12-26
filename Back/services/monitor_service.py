@@ -232,43 +232,39 @@ class MonitorService:
                 self.last_class_check = "after_class"
         except ValueError:
             pass
-        
-        # 점심 시간 시작/종료 감지 (수업 시간 내에서만)
-        try:
-            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
-            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
-            
-            # 점심 시간인지 확인 (시작 시간 이상, 종료 시간 미만)
-            is_lunch_time = lunch_start <= current_time_obj < lunch_end
-            
-            # 점심 시작 감지 (점심 시간에 진입했을 때)
-            if is_lunch_time and self.last_lunch_check != "in_lunch":
-                # 점심 시작 시에는 타이머 리셋 없이 로그만 기록
-                # 점심 종료 시 타이머 리셋으로 충분함
-                self.last_lunch_check = "in_lunch"
-                await manager.broadcast_system_log(
-                    level="info",
-                    source="system",
-                    event_type="lunch_start",
-                    message=f"점심 시간이 시작되었습니다. ({current_time})"
-                )
-            
-            # 점심 종료 감지 (점심 시간에서 벗어났을 때)
-            # current_time_obj >= lunch_end이면 점심 시간이 아님
-            if current_time_obj >= lunch_end and self.last_lunch_check == "in_lunch":
-                # 카메라 OFF 상태인 모든 학생의 타이머 리셋 (joined_student_ids=None)
-                # UTC 시간 사용 (DB는 모든 시간을 UTC로 저장)
-                from database.db_service import utcnow
-                await self.db_service.reset_camera_off_timers(utcnow(), joined_student_ids=None)
-                self.last_lunch_check = "after_lunch"
-                await manager.broadcast_system_log(
-                    level="info",
-                    source="system",
-                    event_type="lunch_end",
-                    message=f"점심 시간이 종료되었습니다. ({current_time})"
-                )
-        except ValueError:
-            pass
+
+    async def _check_not_joined_students(self, joined_today: set[int]):
+        """수업 시작 이후 미접속 학생을 미접속 상태로 표시"""
+        if not self.slack_listener:
+            return
+
+        students = await self.db_service.get_all_students()
+        updated = 0
+
+        for student in students:
+            if student.is_admin:
+                continue
+
+            if student.status_type == "not_joined":
+                if student.id in joined_today:
+                    if await self.db_service.clear_not_joined_status(student.id):
+                        updated += 1
+                continue
+
+            if student.status_type is not None:
+                continue
+
+            if student.is_absent:
+                continue
+
+            if student.id in joined_today:
+                continue
+
+            if await self.db_service.set_not_joined_status(student.id):
+                updated += 1
+
+        if updated:
+            await self.broadcast_dashboard_update_now()
     
     async def _check_students(self):
         """학생들의 카메라 상태 체크"""
@@ -310,6 +306,10 @@ class MonitorService:
                 return
         except ValueError:
             pass
+
+        joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
+
+        await self._check_not_joined_students(joined_today)
         
         await self._check_left_students()
         
@@ -322,8 +322,6 @@ class MonitorService:
 
         if not students:
             return
-
-        joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
 
         candidate_students = []
 
@@ -352,8 +350,8 @@ class MonitorService:
             if student.last_leave_time is not None:
                 continue
 
-            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
-            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석, 미접속) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence', 'not_joined']:
                 continue
 
             if student.is_absent:
@@ -472,8 +470,8 @@ class MonitorService:
             if self.is_dm_paused:
                 continue
 
-            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
-            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석, 미접속) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence', 'not_joined']:
                 continue
 
             if not student.is_absent:
@@ -574,8 +572,8 @@ class MonitorService:
             if self.is_dm_paused:
                 continue
 
-            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석) 알림 보내지 않음
-            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence']:
+            # status_type이 있으면 (지각, 외출, 조퇴, 휴가, 결석, 미접속) 알림 보내지 않음
+            if student.status_type in ['late', 'leave', 'early_leave', 'vacation', 'absence', 'not_joined']:
                 continue
 
             success = await self.discord_bot.send_return_reminder(student)

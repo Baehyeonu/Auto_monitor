@@ -30,7 +30,8 @@ function getStatusBadge(student: Student) {
       leave: '외출',
       early_leave: '조퇴',
       vacation: '휴가',
-      absence: '결석'
+      absence: '결석',
+      not_joined: '미접속',
     }
     const label = statusLabels[student.status_type] || student.status_type
     return <Badge variant="outline" className="border-purple-500 text-purple-600">{label}</Badge>
@@ -188,7 +189,11 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
                         마지막 상태 변경:{' '}
                         {student.last_status_change
                           ? formatKoreanTime(student.last_status_change)
-                          : '정보 없음'}
+                          : student.status_set_at
+                            ? formatKoreanTime(student.status_set_at)
+                            : student.not_joined
+                              ? '입장 기록 없음'
+                              : '정보 없음'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -246,4 +251,3 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
     </>
   )
 }
-
