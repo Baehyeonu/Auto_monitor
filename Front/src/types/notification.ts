@@ -8,6 +8,7 @@ export interface StatusNotificationData {
   end_date?: string
   time?: string
   is_future_date?: boolean
+  is_immediate?: boolean
 }
 
 export interface Notification {

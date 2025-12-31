@@ -24,7 +24,7 @@ async def get_overview():
 
 
 @router.get("/students")
-async def get_dashboard_students(filter: str = Query("all", regex="^(all|camera_on|camera_off|left|not_joined)$")):
+async def get_dashboard_students(filter: str = Query("all", pattern="^(all|camera_on|camera_off|left|not_joined)$")):
     """실시간 학생 상태 목록"""
     students = await db_service.get_all_students()
     joined_today = await get_joined_today()

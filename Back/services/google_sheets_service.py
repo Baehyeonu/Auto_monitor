@@ -203,8 +203,8 @@ class GoogleSheetsService:
                         skipped_count += 1
                         continue
 
+                    row_camp = self._first_non_empty(row, ["캠프", "캠프명", "캠프 이름"])
                     if camp_filter_norm:
-                        row_camp = self._first_non_empty(row, ["캠프", "캠프명", "캠프 이름"])
                         if not row_camp or self._normalize_text(row_camp) != camp_filter_norm:
                             skipped_count += 1
                             continue
@@ -282,8 +282,7 @@ class GoogleSheetsService:
                         elif status_type == "leave":
                             if time_obj:
                                 scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
-                                grace_minutes = 10
-                                if scheduled_dt + timedelta(minutes=grace_minutes) < now_local:
+                                if scheduled_dt < now_local:
                                     skipped_count += 1
                                     continue
                                 scheduled_time_str = parsed_time
@@ -352,13 +351,16 @@ class GoogleSheetsService:
 
                     # 업데이트 상세 정보 추가
                     detail = {
+                        "student_id": student.id,
                         "name": student_name,
+                        "camp": row_camp or camp_filter or "",
                         "status": status_kr_display,
                         "start_date": start_date.strftime("%Y-%m-%d"),
                         "end_date": end_date.strftime("%Y-%m-%d") if end_date else None,
                         "time": parsed_time,
                         "reason": reason,
                         "is_immediate": is_immediate if start_date == today else False,
+                        "is_future_date": start_date > today,
                         "protected": is_protected
                     }
                     updated_details.append(detail)
