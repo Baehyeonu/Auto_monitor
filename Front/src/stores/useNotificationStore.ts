@@ -33,6 +33,24 @@ export const useNotificationStore = create<NotificationState>()(
         }
 
         set((state) => {
+          const duplicate = state.notifications.some((n) => {
+            if (n.type !== 'status_notification') return false
+            const prev = n.data
+            return (
+              prev.student_id === data.student_id &&
+              prev.status_type === data.status_type &&
+              prev.start_date === data.start_date &&
+              prev.end_date === data.end_date &&
+              prev.time === data.time &&
+              prev.reason === data.reason &&
+              prev.is_immediate === data.is_immediate
+            )
+          })
+
+          if (duplicate) {
+            return state
+          }
+
           const nextNotifications = [notification, ...state.notifications]
 
           // 최대 개수 제한

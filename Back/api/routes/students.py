@@ -32,7 +32,7 @@ db_service = DBService()
 async def get_students(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, regex="^(camera_on|camera_off|left|not_joined)$"),
+    status: Optional[str] = Query(None, pattern="^(camera_on|camera_off|left|not_joined)$"),
     search: Optional[str] = None,
     is_admin: Optional[str] = Query(None, description="관리자 여부 필터 (true: 관리자만, false: 학생만, null: 전체)")
 ):

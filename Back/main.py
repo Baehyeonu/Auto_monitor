@@ -184,6 +184,10 @@ class ZepMonitoringSystem:
             # ⭐ Monitor Service 시작 (_check_startup_reset은 이미 실행했으므로 제외)
             monitor_task = asyncio.create_task(self.monitor_service.start_without_reset())
             self.tasks.append(monitor_task)
+
+            # ⭐ Google Sheets 자동 동기화 시작 (1시간 간격)
+            google_sync_task = asyncio.create_task(self._run_google_sheets_sync())
+            self.tasks.append(google_sync_task)
             
             if self.screen_monitor:
                 screen_task = asyncio.create_task(self.screen_monitor.start())
@@ -370,6 +374,62 @@ class ZepMonitoringSystem:
         print("💡 단축키: [Enter] - 상태 확인, [o+Enter] - OFF 학생만, [l+Enter] - 접속 종료 학생만, [n+Enter] - 접속 안 한 학생만, [p+Enter] - DM 일시정지, [r+Enter] - DM 재개, [q+Enter] - 종료")
         print("=" * 60)
         print()
+
+    async def _broadcast_google_sync_notifications(self, result: dict) -> None:
+        details = result.get("updated_details", [])
+        seen_keys: set[str] = set()
+        for detail in details:
+            key_parts = [
+                str(detail.get("student_id") or ""),
+                str(detail.get("status") or ""),
+                str(detail.get("start_date") or ""),
+                str(detail.get("end_date") or ""),
+                str(detail.get("time") or ""),
+                str(detail.get("reason") or ""),
+                str(detail.get("is_immediate") or ""),
+            ]
+            key = "|".join(key_parts)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            payload = {
+                "student_id": detail.get("student_id") or 0,
+                "student_name": detail.get("name") or "학생",
+                "camp": detail.get("camp") or (config.CAMP_NAME or "캠프"),
+                "status_type": detail.get("status") or "상태",
+                "reason": detail.get("reason"),
+                "start_date": detail.get("start_date"),
+                "end_date": detail.get("end_date"),
+                "time": detail.get("time"),
+                "is_future_date": detail.get("is_future_date", False),
+                "is_immediate": detail.get("is_immediate", False),
+            }
+            await self.ws_manager.broadcast_status_notification(payload)
+
+    async def _run_google_sheets_sync(self):
+        """Google Sheets 자동 동기화 (1시간 간격)"""
+        from services.google_sheets_service import google_sheets_service
+
+        interval_seconds = 60 * 60
+        await asyncio.sleep(5)
+
+        while self.is_running:
+            if config.GOOGLE_SHEETS_URL:
+                try:
+                    result = await google_sheets_service.sync_status_from_sheets()
+                    if result.get("success"):
+                        details = result.get("updated_details", []) or []
+                        if details:
+                            await self._broadcast_google_sync_notifications(result)
+                            if self.monitor_service:
+                                await self.monitor_service.broadcast_dashboard_update_now()
+                    else:
+                        error = result.get("error", "알 수 없는 오류")
+                        print(f"⚠️ 구글 시트 자동 동기화 실패: {error}")
+                except Exception as e:
+                    print(f"⚠️ 구글 시트 자동 동기화 실패: {e}")
+
+            await asyncio.sleep(interval_seconds)
     
     async def _handle_keyboard_input(self):
         """키보드 입력 핸들러 (터미널 단축키)"""
@@ -801,4 +861,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ 프로그램 오류: {e}")
         sys.exit(1)
-

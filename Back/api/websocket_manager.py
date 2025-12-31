@@ -129,6 +129,15 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
         await self.broadcast_to_dashboard(message)
+
+    async def broadcast_status_notification(self, data: dict):
+        """상태 변경 알림 브로드캐스트 (종소리 알림)"""
+        message = {
+            "type": "status_notification",
+            "payload": data,
+            "timestamp": datetime.now().isoformat()
+        }
+        await self.broadcast_to_dashboard(message)
     
     async def broadcast_system_log(
         self,
@@ -162,5 +171,4 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-
 

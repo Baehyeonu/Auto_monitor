@@ -14,6 +14,39 @@ from database import DBService
 router = APIRouter()
 
 
+async def _broadcast_google_sync_notifications(result: dict) -> None:
+    from api.websocket_manager import manager
+
+    details = result.get("updated_details", [])
+    seen_keys: set[str] = set()
+    for detail in details:
+        key_parts = [
+            str(detail.get("student_id") or ""),
+            str(detail.get("status") or ""),
+            str(detail.get("start_date") or ""),
+            str(detail.get("end_date") or ""),
+            str(detail.get("time") or ""),
+            str(detail.get("reason") or ""),
+            str(detail.get("is_immediate") or ""),
+        ]
+        key = "|".join(key_parts)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        payload = {
+            "student_id": detail.get("student_id") or 0,
+            "student_name": detail.get("name") or "학생",
+            "camp": detail.get("camp") or "캠프",
+            "status_type": detail.get("status") or "상태",
+            "reason": detail.get("reason"),
+            "start_date": detail.get("start_date"),
+            "end_date": detail.get("end_date"),
+            "time": detail.get("time"),
+            "is_future_date": detail.get("is_future_date", False),
+            "is_immediate": detail.get("is_immediate", False),
+        }
+        await manager.broadcast_status_notification(payload)
+
 def get_system_instance():
     """시스템 인스턴스 가져오기 (지연 import로 순환 참조 방지)"""
     try:
@@ -163,7 +196,7 @@ async def update_settings(data: SettingsUpdate):
 
 
 @router.post("/test-connection")
-async def test_connection(type: str = Query(..., regex="^(discord|slack)$")):
+async def test_connection(type: str = Query(..., pattern="^(discord|slack)$")):
     """연동 테스트"""
     if type == "discord":
         return {"success": True, "message": "Discord connected"}
@@ -245,6 +278,7 @@ async def sync_from_slack():
                 status_code=400,
                 detail=f"구글 시트 동기화 실패: {sheets_result.get('error', '알 수 없는 오류')}"
             )
+        await _broadcast_google_sync_notifications(sheets_result)
         await system.monitor_service.broadcast_dashboard_update_now()
         return {
             "success": True,
@@ -331,4 +365,5 @@ async def sync_google_sheets():
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "동기화 실패"))
 
+    await _broadcast_google_sync_notifications(result)
     return result

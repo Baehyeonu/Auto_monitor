@@ -233,6 +233,38 @@ class MonitorService:
         except ValueError:
             pass
 
+        # 점심 시간 시작/종료 감지
+        try:
+            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
+            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
+
+            # 점심 시간인지 확인 (시작 시간 이상, 종료 시간 미만)
+            is_lunch_time = lunch_start <= current_time_obj < lunch_end
+
+            # 점심 시작 감지
+            if is_lunch_time and self.last_lunch_check != "in_lunch":
+                self.last_lunch_check = "in_lunch"
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="lunch_start",
+                    message=f"점심 시간이 시작되었습니다. ({current_time})"
+                )
+
+            # 점심 종료 감지 (시작 로그 유무와 무관하게 하루 1회만 리셋)
+            if current_time_obj >= lunch_end and self.last_lunch_check != "after_lunch":
+                from database.db_service import utcnow
+                await self.db_service.reset_camera_off_timers(utcnow(), joined_student_ids=None)
+                self.last_lunch_check = "after_lunch"
+                await manager.broadcast_system_log(
+                    level="info",
+                    source="system",
+                    event_type="lunch_end",
+                    message=f"점심 시간이 종료되었습니다. ({current_time})"
+                )
+        except ValueError:
+            pass
+
     async def _check_not_joined_students(self, joined_today: set[int]):
         """수업 시작 이후 미접속 학생을 미접속 상태로 표시"""
         if not self.slack_listener:
@@ -401,10 +433,10 @@ class MonitorService:
                 # 첫 번째 알림: 수강생에게만
                 success = await self.discord_bot.send_camera_alert(student)
 
-                if success:
-                    # 알림 발송 즉시 DB 업데이트 (쿨타임 적용)
-                    await self.db_service.record_alert_sent(student.id)
+                # 전송 성공/실패와 관계없이 쿨타임 적용
+                await self.db_service.record_alert_sent(student.id)
 
+                if success:
                     await manager.broadcast_new_alert(
                         alert_id=0,
                         student_id=student.id,
@@ -526,9 +558,10 @@ class MonitorService:
             if should_alert:
                 success = await self.discord_bot.send_absent_alert(student)
 
-                if success:
-                    await self.db_service.record_absent_alert_sent(student.id)
+                # 전송 성공/실패와 관계없이 쿨타임 적용
+                await self.db_service.record_absent_alert_sent(student.id)
 
+                if success:
                     if not student.last_leave_time:
                         continue
 
@@ -577,9 +610,11 @@ class MonitorService:
                 continue
 
             success = await self.discord_bot.send_return_reminder(student)
-            
+
+            # 전송 성공/실패와 관계없이 쿨타임 적용
+            await self.db_service.record_return_request(student.id)
+
             if success:
-                await self.db_service.record_return_request(student.id)
                 # 복귀 요청 DM 전송 로그
                 await manager.broadcast_system_log(
                     level="info",
@@ -706,6 +741,10 @@ class MonitorService:
             # 오늘 접속한 학생 목록 초기화
             if self.slack_listener:
                 self.slack_listener.joined_students_today.clear()
+
+            # 일일 초기화 시 수업/점심 로그 상태도 리셋
+            self.last_lunch_check = None
+            self.last_class_check = None
 
             self.is_resetting = False
 

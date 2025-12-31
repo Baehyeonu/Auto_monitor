@@ -12,6 +12,7 @@ from services.admin_manager import admin_manager
 import re
 import asyncio
 from utils.name_utils import extract_name_only
+from database.db_service import now_seoul
 
 
 class DiscordBot(commands.Bot):
@@ -72,7 +73,7 @@ class DiscordBot(commands.Bot):
         # 세 가지가 모두 포함된 경우만 학생으로 판단
         return has_english and has_digit and has_korean
 
-    async def _handle_dm_failure(self, student, error: Exception) -> bool:
+    async def _handle_dm_failure(self, student, error: Exception, context: str | None = None) -> bool:
         """Normalize DM failure logging and broadcast."""
         if isinstance(error, discord.Forbidden):
             reason = "사용자가 DM을 차단했거나 Discord 봇과 서버를 공유하지 않습니다"
@@ -81,9 +82,10 @@ class DiscordBot(commands.Bot):
         else:
             reason = f"{type(error).__name__}: {str(error)}"
 
+        context_text = f"{context} - " if context else ""
         error_msg = (
             f"❌ DM 전송 실패: {student.zep_name}님 "
-            f"(Discord ID: {student.discord_id}) - {reason}"
+            f"(Discord ID: {student.discord_id}) - {context_text}{reason}"
         )
         print(f"❌ [Discord] {error_msg}")
         try:
@@ -96,6 +98,19 @@ class DiscordBot(commands.Bot):
                 student_name=student.zep_name,
                 student_id=student.id
             ))
+
+            now_local = now_seoul()
+            payload = {
+                "student_id": student.id,
+                "student_name": student.zep_name,
+                "camp": config.CAMP_NAME or "캠프",
+                "status_type": "DM 전송 실패",
+                "reason": f"{context_text}{reason}".strip(),
+                "time": now_local.strftime("%H:%M"),
+                "is_future_date": False,
+                "is_immediate": True,
+            }
+            asyncio.create_task(manager.broadcast_status_notification(payload))
         except Exception:
             pass
         return False
@@ -668,7 +683,7 @@ class DiscordBot(commands.Bot):
             return True
 
         except Exception as e:
-            return await self._handle_dm_failure(student, e)
+            return await self._handle_dm_failure(student, e, "카메라 OFF 알림")
     
     async def _handle_button_response(self, interaction: discord.Interaction, action: str):
         """
@@ -985,7 +1000,7 @@ class DiscordBot(commands.Bot):
             return True
             
         except Exception as e:
-            return await self._handle_dm_failure(student, e)
+            return await self._handle_dm_failure(student, e, "외출/조퇴 확인")
     
     async def _handle_admin_absent_response(self, interaction: discord.Interaction, custom_id: str):
         """
@@ -1247,7 +1262,7 @@ class DiscordBot(commands.Bot):
             return True
             
         except Exception as e:
-            return await self._handle_dm_failure(student, e)
+            return await self._handle_dm_failure(student, e, "복귀 확인 요청")
     
     async def send_manual_camera_alert(self, student) -> bool:
         """
@@ -1290,7 +1305,7 @@ class DiscordBot(commands.Bot):
             return True
             
         except Exception as e:
-            return await self._handle_dm_failure(student, e)
+            return await self._handle_dm_failure(student, e, "접속 확인 요청")
     
     async def send_face_not_visible_alert(self, student) -> bool:
         """
@@ -1321,7 +1336,7 @@ class DiscordBot(commands.Bot):
             return True
             
         except Exception as e:
-            return await self._handle_dm_failure(student, e)
+            return await self._handle_dm_failure(student, e, "카메라 확인 요청")
 
 
 class AlertView(discord.ui.View):

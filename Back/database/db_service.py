@@ -258,12 +258,43 @@ class DBService:
                 "is_cam_on": is_cam_on,
                 "updated_at": to_naive(utcnow())
             }
+            current_status = None
+            protected = False
+            status_set_at = None
 
             # status_change_time이 명시적으로 전달된 경우에만 last_status_change 업데이트
             if status_change_time is not None:
                 if status_change_time.tzinfo is None:
                     status_change_time = status_change_time.replace(tzinfo=timezone.utc)
                 update_values["last_status_change"] = to_naive(status_change_time)
+
+            # 히스토리 복원 중이 아닐 때만 상태 초기화 로직 적용
+            if not is_restoring:
+                result = await session.execute(
+                    select(
+                        Student.status_type,
+                        Student.status_protected,
+                        Student.status_set_at
+                    ).where(Student.zep_name == zep_name)
+                )
+                row = result.first()
+                if row:
+                    current_status, is_protected, status_set_at = row
+                    # is_protected가 None이면 False로 간주 (보호되지 않음)
+                    protected = is_protected if is_protected is not None else False
+
+                    if current_status == "leave":
+                        grace_until = None
+                        if status_set_at:
+                            status_set_at_utc = to_aware(status_set_at)
+                            grace_until = status_set_at_utc + timedelta(hours=1)
+                        can_clear_leave = grace_until is None or utcnow() >= grace_until
+
+                        if not protected and can_clear_leave:
+                            update_values["status_type"] = None
+                            update_values["status_set_at"] = None
+                            update_values["alarm_blocked_until"] = None
+                            logger.info(f"[상태 초기화] {zep_name}: leave → 정상")
             
             if is_cam_on:
                 update_values["last_alert_sent"] = None
@@ -273,33 +304,23 @@ class DBService:
                 # 카메라가 ON이면 접속 종료 상태도 초기화 (재입장한 경우)
                 update_values["last_leave_time"] = None
 
-                # 히스토리 복원 중이 아닐 때만 상태를 초기화
-                if not is_restoring:
-                    # 지각/외출/조퇴 상태인 경우 카메라 ON 시 정상으로 복귀
+                if not is_restoring and current_status:
+                    # 지각/조퇴 상태인 경우 카메라 ON 시 정상으로 복귀
                     # (휴가, 결석은 하루 종일 유효하므로 유지)
-                    # 먼저 현재 상태를 확인해야 하므로, 별도 쿼리로 처리
-                    result = await session.execute(
-                        select(Student.status_type, Student.status_protected).where(Student.zep_name == zep_name)
+                    should_clear = not protected and current_status in ["late", "early_leave"]
+
+                    logger.info(
+                        f"[카메라 ON 상태 체크] {zep_name}: "
+                        f"status={current_status}, protected={protected}, "
+                        f"초기화 대상={should_clear}"
                     )
-                    row = result.first()
-                    if row:
-                        current_status, is_protected = row
-                        # Google Sheets에서 설정한 보호된 상태가 아닌 경우에만 초기화
-                        # is_protected가 None이면 False로 간주 (보호되지 않음)
-                        protected = is_protected if is_protected is not None else False
 
-                        logger.info(
-                            f"[카메라 ON 상태 체크] {zep_name}: "
-                            f"status={current_status}, protected={protected}, "
-                            f"초기화 대상={not protected and current_status in ['late', 'leave', 'early_leave']}"
-                        )
-
-                        if not protected and current_status in ["late", "leave", "early_leave"]:
-                            # 지각/외출/조퇴 상태를 정상으로 변경 (카메라 ON = 복귀)
-                            update_values["status_type"] = None
-                            update_values["status_set_at"] = None
-                            update_values["alarm_blocked_until"] = None
-                            logger.info(f"[상태 초기화] {zep_name}: {current_status} → 정상")
+                    if should_clear:
+                        # 지각/조퇴는 즉시 해제 (카메라 ON = 복귀)
+                        update_values["status_type"] = None
+                        update_values["status_set_at"] = None
+                        update_values["alarm_blocked_until"] = None
+                        logger.info(f"[상태 초기화] {zep_name}: {current_status} → 정상")
             
             result = await session.execute(
                 update(Student)
@@ -1510,11 +1531,8 @@ class DBService:
             status_type = student.scheduled_status_type
 
             if status_type == "leave":
-                grace_minutes = 10
-                if student.is_cam_on:
-                    return False
                 if student.scheduled_status_time:
-                    if student.scheduled_status_time + timedelta(minutes=grace_minutes) > now_naive:
+                    if student.scheduled_status_time > now_naive:
                         return False
 
             # 상태별 알람 금지 로직

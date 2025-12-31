@@ -35,6 +35,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
   const { data, read, timestamp } = notification
 
   const emoji = STATUS_EMOJI[data.status_type] || '📌'
+  const actionLabel = data.is_immediate ? '적용' : '예약'
 
   const getDateDisplay = () => {
     if (data.is_future_date && data.start_date) {
@@ -70,8 +71,10 @@ export function NotificationItem({ notification }: NotificationItemProps) {
           </div>
           <div className="text-sm">
             <span className="font-medium text-orange-400">{data.status_type}</span>
-            {' - '}
+            {' · '}
             <span>{getDateDisplay()}</span>
+            {' · '}
+            <span className="text-xs text-muted-foreground">{actionLabel}</span>
             {data.end_date && data.end_date !== data.start_date && (
               <span> ~ {data.end_date}</span>
             )}
