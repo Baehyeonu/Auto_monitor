@@ -34,6 +34,10 @@ class GoogleSheetsService:
                 return value
         return ""
 
+    def _get_row_value(self, row: Dict[str, str], keys: List[str]) -> str:
+        """여러 헤더 후보 중 첫 번째 값 반환"""
+        return self._first_non_empty(row, keys)
+
     def _parse_korean_time(self, time_str: str) -> Optional[str]:
         """
         한국어 시간 형식을 24시간 형식으로 변환
@@ -194,10 +198,13 @@ class GoogleSheetsService:
             for row in rows:
                 try:
                     # 필수 필드 확인
-                    student_name = row.get('이름', '').strip()
+                    student_name = self._get_row_value(row, ['이름'])
                     # "지각 / 조퇴 / 외출" 컬럼이 비어있으면 "일정볼참 종류" 사용
-                    status_kr = row.get('지각 / 조퇴 / 외출', '').strip() or row.get('일정볼참 종류', '').strip()
-                    start_date_str = row.get('시작날짜', '').strip()
+                    status_kr = self._get_row_value(
+                        row,
+                        ['지각 / 조퇴 / 외출', '지각 / 조퇴', '일정볼참 종류']
+                    )
+                    start_date_str = self._get_row_value(row, ['시작날짜'])
 
                     if not student_name or not status_kr or not start_date_str:
                         skipped_count += 1
@@ -230,12 +237,12 @@ class GoogleSheetsService:
                         continue
 
                     # 종료 날짜 (선택)
-                    end_date_str = row.get('종료날짜', '').strip()
+                    end_date_str = self._get_row_value(row, ['종료날짜'])
                     end_date = self._parse_date(end_date_str) if end_date_str else None
 
                     # 시간 파싱 (선택)
-                    time_str = row.get('입실 / 퇴실 예정 시간', '').strip()
-                    leave_start_str = row.get('외출 시작', '').strip()
+                    time_str = self._get_row_value(row, ['입실 / 퇴실 예정 시간'])
+                    leave_start_str = self._get_row_value(row, ['외출 시작'])
                     parsed_time = self._parse_korean_time(time_str) if time_str else None
                     leave_start_time = self._parse_korean_time(leave_start_str) if leave_start_str else None
                     if status_type == "leave" and leave_start_time:
@@ -251,7 +258,7 @@ class GoogleSheetsService:
                             continue
 
                     # 사유 (선택)
-                    reason = row.get('세부 사유', '').strip() or row.get('내용', '').strip()
+                    reason = self._get_row_value(row, ['세부 사유', '내용'])
 
                     # 학생 찾기
                     student = await self.db_service.get_student_by_zep_name(student_name)
