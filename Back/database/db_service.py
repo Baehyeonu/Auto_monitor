@@ -529,6 +529,22 @@ class DBService:
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(Student))
             return result.scalars().all()
+
+    @staticmethod
+    async def get_scheduled_status_students() -> List[Student]:
+        """
+        예약된 상태가 있는 학생 목록 조회
+
+        Returns:
+            예약 상태가 있는 Student 리스트
+        """
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Student)
+                .where(Student.scheduled_status_type.isnot(None))
+                .order_by(Student.scheduled_status_time.asc())
+            )
+            return result.scalars().all()
     
     @staticmethod
     async def delete_student(student_id: int) -> bool:

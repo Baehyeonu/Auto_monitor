@@ -22,3 +22,14 @@ export interface PaginatedResponse<T> {
   page: number
   limit: number
 }
+
+export interface ScheduledStatus {
+  student_id: number
+  student_name: string
+  camp: string
+  status_type: string
+  status_label: string
+  scheduled_time?: string | null
+  reason?: string | null
+  end_date?: string | null
+}

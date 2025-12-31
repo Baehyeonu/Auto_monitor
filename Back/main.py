@@ -407,11 +407,21 @@ class ZepMonitoringSystem:
             await self.ws_manager.broadcast_status_notification(payload)
 
     async def _run_google_sheets_sync(self):
-        """Google Sheets 자동 동기화 (1시간 간격)"""
+        """Google Sheets 자동 동기화 (정각 기준 1시간 간격)"""
         from services.google_sheets_service import google_sheets_service
+        from database.db_service import now_seoul
 
         interval_seconds = 60 * 60
         await asyncio.sleep(5)
+
+        # 정각까지 대기
+        while self.is_running:
+            now_local = now_seoul()
+            next_hour = (now_local + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            wait_seconds = max(0, (next_hour - now_local).total_seconds())
+            if wait_seconds > 0:
+                await asyncio.sleep(wait_seconds)
+            break
 
         while self.is_running:
             if config.GOOGLE_SHEETS_URL:

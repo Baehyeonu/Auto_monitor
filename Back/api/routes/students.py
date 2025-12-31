@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from database import DBService
+from config import config
 from api.schemas.student import (
     StudentCreate,
     StudentUpdate,
@@ -24,8 +25,61 @@ class SendDMRequest(BaseModel):
     dm_type: str
 
 
+class ScheduledStatusResponse(BaseModel):
+    student_id: int
+    student_name: str
+    camp: str
+    status_type: str
+    status_label: str
+    scheduled_time: Optional[str]
+    reason: Optional[str] = None
+    end_date: Optional[str] = None
+
+
 router = APIRouter()
 db_service = DBService()
+
+
+@router.get("/scheduled", response_model=List[ScheduledStatusResponse])
+async def get_scheduled_statuses():
+    """예약된 상태 목록 조회"""
+    students = await db_service.get_scheduled_status_students()
+
+    status_labels = {
+        "late": "지각",
+        "leave": "외출",
+        "early_leave": "조퇴",
+        "vacation": "휴가",
+        "absence": "결석",
+    }
+
+    results = []
+    for student in students:
+        scheduled_time = (
+            student.scheduled_status_time.isoformat()
+            if student.scheduled_status_time
+            else None
+        )
+        end_date = (
+            student.status_end_date.date().isoformat()
+            if student.status_end_date
+            else None
+        )
+        status_type = student.scheduled_status_type or ""
+        results.append(
+            {
+                "student_id": student.id,
+                "student_name": student.zep_name,
+                "camp": config.CAMP_NAME or "캠프",
+                "status_type": status_type,
+                "status_label": status_labels.get(status_type, status_type),
+                "scheduled_time": scheduled_time,
+                "reason": student.status_reason,
+                "end_date": end_date,
+            }
+        )
+
+    return results
 
 
 @router.get("", response_model=PaginatedResponse[StudentResponse])

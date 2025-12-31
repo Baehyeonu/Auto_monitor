@@ -1,6 +1,6 @@
 import { API_ROUTES } from '@/lib/constants'
 import { apiRequest } from './api'
-import type { PaginatedResponse, Student } from '@/types/student'
+import type { PaginatedResponse, ScheduledStatus, Student } from '@/types/student'
 
 export async function fetchStudents(params?: {
   page?: number
@@ -18,6 +18,10 @@ export async function fetchStudents(params?: {
       is_admin: params?.is_admin,
     },
   })
+}
+
+export async function fetchScheduledStatuses() {
+  return apiRequest<ScheduledStatus[]>(`${API_ROUTES.students}/scheduled`)
 }
 
 export async function createStudent(payload: {
@@ -83,4 +87,3 @@ export async function updateStudentStatus(
     }),
   })
 }
-
