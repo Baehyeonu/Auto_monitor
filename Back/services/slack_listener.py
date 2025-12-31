@@ -72,6 +72,14 @@ class SlackListener:
 
         # 이벤트 핸들러 등록 (모든 메시지 타입 수신)
         self.app.message()(self._handle_all_messages)
+        # bot_message 이벤트는 무시 처리 (Unhandled request 로그 방지)
+        self.app.event("message")(self._handle_message_event)
+
+    async def _handle_message_event(self, event, ack):
+        """Slack bot_message 이벤트 무시 처리"""
+        await ack()
+        if event.get("subtype") == "bot_message":
+            return
     
     def _load_ignore_keywords(self) -> List[str]:
         """설정 파일에서 무시할 키워드 목록 로드"""

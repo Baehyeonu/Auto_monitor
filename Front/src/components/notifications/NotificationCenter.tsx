@@ -16,10 +16,7 @@ import type { ScheduledStatus } from '@/types/student'
 export function NotificationCenter() {
   const { notifications, markAllAsRead, clearAll, getUnreadCount } =
     useNotificationStore()
-  const [activeTab, setActiveTab] = useState<'notifications' | 'scheduled'>(
-    'notifications'
-  )
-  const [isOpen, setIsOpen] = useState(false)
+  const [scheduledOpen, setScheduledOpen] = useState(false)
   const [scheduledStatuses, setScheduledStatuses] = useState<ScheduledStatus[]>([])
   const [isLoadingScheduled, setIsLoadingScheduled] = useState(false)
 
@@ -60,21 +57,16 @@ export function NotificationCenter() {
   }
 
   useEffect(() => {
-    if (isOpen && activeTab === 'scheduled') {
+    if (scheduledOpen) {
       loadScheduled()
     }
-  }, [isOpen, activeTab])
+  }, [scheduledOpen])
 
   return (
-    <DropdownMenu onOpenChange={setIsOpen}>
-      <DropdownMenuTrigger asChild>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            onClick={() => setActiveTab('notifications')}
-          >
+    <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="relative">
             {hasUnread ? (
               <BellRing className={cn('h-5 w-5 text-orange-400', hasUnread && 'animate-pulse')} />
             ) : (
@@ -82,66 +74,26 @@ export function NotificationCenter() {
             )}
             <NotificationBadge count={unreadCount} />
           </Button>
-          <Button
-            variant={activeTab === 'scheduled' ? 'secondary' : 'ghost'}
-            size="icon"
-            className="relative"
-            onClick={() => setActiveTab('scheduled')}
-          >
-            <CalendarClock className="h-5 w-5" />
-            {scheduledCount > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-semibold text-white">
-                {scheduledCount}
-              </span>
-            )}
-          </Button>
-        </div>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96 p-0">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Button
-              variant={activeTab === 'notifications' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setActiveTab('notifications')}
-            >
-              알림
-            </Button>
-            <Button
-              variant={activeTab === 'scheduled' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setActiveTab('scheduled')}
-            >
-              예약
-            </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-96 p-0">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h3 className="font-semibold">알림</h3>
+            <div className="flex gap-2">
+              {hasUnread && (
+                <Button variant="ghost" size="sm" onClick={markAllAsRead}>
+                  모두 읽음
+                </Button>
+              )}
+              {notifications.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearAll}>
+                  <Trash2 className="mr-1 h-3 w-3" />
+                  모두 삭제
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            {activeTab === 'notifications' && hasUnread && (
-              <Button variant="ghost" size="sm" onClick={markAllAsRead}>
-                모두 읽음
-              </Button>
-            )}
-            {activeTab === 'notifications' && notifications.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearAll}>
-                <Trash2 className="mr-1 h-3 w-3" />
-                모두 삭제
-              </Button>
-            )}
-            {activeTab === 'scheduled' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={loadScheduled}
-                disabled={isLoadingScheduled}
-              >
-                새로고침
-              </Button>
-            )}
-          </div>
-        </div>
 
-        {activeTab === 'notifications' ? (
-          notifications.length === 0 ? (
+          {notifications.length === 0 ? (
             <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
               알림이 없습니다
             </div>
@@ -154,8 +106,36 @@ export function NotificationCenter() {
                 />
               ))}
             </div>
-          )
-        ) : (
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu onOpenChange={setScheduledOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="relative">
+            <CalendarClock className="h-5 w-5" />
+            {scheduledCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-semibold text-white">
+                {scheduledCount}
+              </span>
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-96 p-0">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h3 className="font-semibold">예약</h3>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadScheduled}
+                disabled={isLoadingScheduled}
+              >
+                새로고침
+              </Button>
+            </div>
+          </div>
+
           <div className="max-h-[400px] overflow-y-auto">
             {isLoadingScheduled ? (
               <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
@@ -190,8 +170,8 @@ export function NotificationCenter() {
               ))
             )}
           </div>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   )
 }
