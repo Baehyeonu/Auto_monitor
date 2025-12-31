@@ -38,6 +38,26 @@ class GoogleSheetsService:
         """여러 헤더 후보 중 첫 번째 값 반환"""
         return self._first_non_empty(row, keys)
 
+    def _extract_status_from_row(self, row: Dict[str, str]) -> Optional[str]:
+        """행 전체에서 상태 키워드 검색"""
+        keywords = ["지각", "조퇴", "외출", "휴가", "결석"]
+        for value in row.values():
+            if not value:
+                continue
+            text = str(value).strip()
+            for keyword in keywords:
+                if keyword in text:
+                    return keyword
+        return None
+
+    def _extract_time_from_row(self, row: Dict[str, str]) -> Optional[str]:
+        """행 전체에서 시간 문자열 검색"""
+        for value in row.values():
+            parsed = self._parse_korean_time(str(value).strip()) if value else None
+            if parsed:
+                return parsed
+        return None
+
     def _parse_korean_time(self, time_str: str) -> Optional[str]:
         """
         한국어 시간 형식을 24시간 형식으로 변환
@@ -199,34 +219,47 @@ class GoogleSheetsService:
                 try:
                     # 필수 필드 확인
                     student_name = self._get_row_value(row, ['이름'])
-                    # "지각 / 조퇴 / 외출" 컬럼이 비어있으면 "일정볼참 종류" 사용
+                    def log_skip(reason: str) -> None:
+                        name = student_name or row.get('이름', '').strip() or 'Unknown'
+                        logger.info(f"[Google Sheets] 스킵: {name} - {reason}")
+                    # "일정볼참 종류" 우선, 비어있으면 "지각 / 조퇴 / 외출" 계열 사용
                     status_kr = self._get_row_value(
                         row,
-                        ['지각 / 조퇴 / 외출', '지각 / 조퇴', '일정볼참 종류']
+                        ['일정볼참 종류', '지각 / 조퇴 / 외출', '지각 / 조퇴']
                     )
                     start_date_str = self._get_row_value(row, ['시작날짜'])
 
                     if not student_name or not status_kr or not start_date_str:
                         skipped_count += 1
+                        log_skip("필수값 누락(이름/상태/시작날짜)")
                         continue
 
                     row_camp = self._first_non_empty(row, ["캠프", "캠프명", "캠프 이름"])
                     if camp_filter_norm:
                         if not row_camp or self._normalize_text(row_camp) != camp_filter_norm:
                             skipped_count += 1
+                            log_skip(f"캠프 불일치({row_camp or '없음'})")
                             continue
 
                     if cohort_filter_norm:
                         row_cohort = self._first_non_empty(row, ["기수", "기수명", "회차"])
                         if not row_cohort or self._normalize_cohort(row_cohort) != cohort_filter_norm:
                             skipped_count += 1
+                            log_skip(f"기수 불일치({row_cohort or '없음'})")
                             continue
 
                     # 상태 타입 매핑
                     status_type = self._map_status_type(status_kr)
                     if not status_type:
+                        fallback_status = self._extract_status_from_row(row)
+                        if fallback_status:
+                            status_kr = fallback_status
+                            status_type = self._map_status_type(status_kr)
+
+                    if not status_type:
                         skipped_count += 1
                         logger.warning(f"[Google Sheets] 알 수 없는 상태: {status_kr}")
+                        log_skip(f"알 수 없는 상태({status_kr})")
                         continue
 
                     # 날짜 파싱
@@ -234,6 +267,7 @@ class GoogleSheetsService:
                     if not start_date:
                         skipped_count += 1
                         logger.warning(f"[Google Sheets] 잘못된 날짜 형식: {start_date_str}")
+                        log_skip(f"날짜 파싱 실패({start_date_str})")
                         continue
 
                     # 종료 날짜 (선택)
@@ -255,7 +289,16 @@ class GoogleSheetsService:
                         except ValueError:
                             skipped_count += 1
                             logger.warning(f"[Google Sheets] 잘못된 시간 형식: {parsed_time}")
+                            log_skip(f"시간 파싱 실패({parsed_time})")
                             continue
+                    else:
+                        parsed_time = self._extract_time_from_row(row)
+                        if parsed_time:
+                            try:
+                                time_obj = datetime.strptime(parsed_time, "%H:%M").time()
+                            except ValueError:
+                                parsed_time = None
+                                time_obj = None
 
                     # 사유 (선택)
                     reason = self._get_row_value(row, ['세부 사유', '내용'])
@@ -265,11 +308,13 @@ class GoogleSheetsService:
                     if not student:
                         skipped_count += 1
                         logger.warning(f"[Google Sheets] 학생을 찾을 수 없음: {student_name}")
+                        log_skip("DB에서 학생 이름 매칭 실패")
                         continue
 
                     # 상태가 오늘 또는 미래인 경우만 처리
                     if start_date < today:
                         skipped_count += 1
+                        log_skip(f"과거 날짜({start_date})")
                         continue
 
                     # 상태 업데이트
@@ -284,6 +329,7 @@ class GoogleSheetsService:
                                 scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
                                 if scheduled_dt < now_local:
                                     skipped_count += 1
+                                    log_skip("지각 시간이 이미 지남")
                                     continue
                             is_immediate = True
                         elif status_type == "leave":
@@ -291,6 +337,7 @@ class GoogleSheetsService:
                                 scheduled_dt = datetime.combine(start_date, time_obj).replace(tzinfo=SEOUL_TZ)
                                 if scheduled_dt < now_local:
                                     skipped_count += 1
+                                    log_skip("외출 시간이 이미 지남")
                                     continue
                                 scheduled_time_str = parsed_time
                             else:
