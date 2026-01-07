@@ -480,6 +480,7 @@ class MonitorService:
         
     async def _check_left_students(self):
         """접속 종료 후 복귀하지 않은 학생들 체크"""
+        now_utc = datetime.now(timezone.utc)
         students = await self.db_service.get_students_left_too_long(
             self.leave_alert_threshold
         )

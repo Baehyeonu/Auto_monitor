@@ -272,6 +272,7 @@ async def sync_from_slack():
     
     try:
         await system.slack_listener.restore_state_from_history(lookback_hours=24)
+        await system.monitor_service.broadcast_dashboard_update_now()
         sheets_result = await google_sheets_service.sync_status_from_sheets()
         if not sheets_result.get("success"):
             raise HTTPException(

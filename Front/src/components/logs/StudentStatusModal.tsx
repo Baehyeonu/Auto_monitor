@@ -5,6 +5,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { fetchStudents } from '@/services/studentService'
 import type { Student } from '@/types/student'
 import { formatKoreanTime } from '@/lib/utils'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import type { WebSocketMessage } from '@/types/websocket'
 import { StudentActionModal } from '@/components/students/StudentActionModal'
 import { StudentStatusManagementModal } from '@/components/students/StudentStatusManagementModal'
 import { SendDMModal } from '@/components/students/SendDMModal'
@@ -167,6 +169,15 @@ export function StudentStatusModal({ open, onOpenChange, status, statusLabel }: 
       loadStudents()
     }
   }, [open, status, loadStudents])
+
+  useWebSocket({
+    onMessage: (message: WebSocketMessage) => {
+      if (!open) return
+      if (message.type === 'DASHBOARD_UPDATE') {
+        loadStudents()
+      }
+    },
+  })
 
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student)
