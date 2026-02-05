@@ -63,6 +63,17 @@ def to_utc(local_dt: datetime) -> datetime:
     return local_dt.astimezone(timezone.utc)
 
 
+def next_seoul_midnight_utc(now_local: Optional[datetime] = None) -> datetime:
+    """다음 자정(서울 기준)을 UTC aware datetime으로 반환"""
+    if now_local is None:
+        now_local = now_seoul()
+    if now_local.tzinfo is None:
+        now_local = now_local.replace(tzinfo=SEOUL_TZ)
+    next_day = (now_local + timedelta(days=1)).date()
+    midnight_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=SEOUL_TZ)
+    return midnight_local.astimezone(timezone.utc)
+
+
 class DBService:
     """데이터베이스 서비스 클래스"""
     
@@ -1399,6 +1410,7 @@ class DBService:
         """
         async with AsyncSessionLocal() as session:
             now = utcnow()
+            now_local = now_seoul()
 
             # status_time이 제공되면 예약으로 처리
             if status_time:
@@ -1412,7 +1424,6 @@ class DBService:
                     # "HH:MM" 문자열인 경우
                     elif isinstance(status_time, str):
                         time_obj = dt_class.strptime(status_time, "%H:%M").time()
-                        from database.db_service import now_seoul, SEOUL_TZ
                         today_seoul = now_seoul().date()
                         scheduled_datetime = dt_class.combine(today_seoul, time_obj)
                         scheduled_datetime_seoul = scheduled_datetime.replace(tzinfo=SEOUL_TZ)
@@ -1451,15 +1462,14 @@ class DBService:
                 # 상태 변화 감지는 last_status_change를 모니터링하여 처리
                 pass
             elif status_type == "early_leave":
-                # 조퇴: 조퇴 처리 이후 알람 금지 (다음 날 자정까지)
-                from datetime import date
-                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                alarm_blocked_until = to_naive(tomorrow)
+                # 조퇴: 조퇴 처리 이후 알람 금지 (다음 날 자정, 서울 기준)
+                next_midnight_utc = next_seoul_midnight_utc(now_local)
+                alarm_blocked_until = to_naive(next_midnight_utc)
             elif status_type == "vacation" or status_type == "absence":
-                # 휴가/결석: 당일 알람 금지 (자정까지)
-                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                alarm_blocked_until = to_naive(tomorrow)
-                status_auto_reset_date = to_naive(tomorrow)
+                # 휴가/결석: 당일 알람 금지 (다음 날 자정, 서울 기준)
+                next_midnight_utc = next_seoul_midnight_utc(now_local)
+                alarm_blocked_until = to_naive(next_midnight_utc)
+                status_auto_reset_date = to_naive(next_midnight_utc)
             
             update_values = {
                 "status_type": status_type,
@@ -1537,6 +1547,7 @@ class DBService:
                 return False
 
             now = utcnow()
+            now_local = now_seoul()
             now_naive = to_naive(now)
 
             # scheduled_time이 아직 안 됐으면 적용하지 않음 (사용자 확인 대기)
@@ -1558,12 +1569,12 @@ class DBService:
             if status_type == "late" or status_type == "leave":
                 pass
             elif status_type == "early_leave":
-                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                alarm_blocked_until = to_naive(tomorrow)
+                next_midnight_utc = next_seoul_midnight_utc(now_local)
+                alarm_blocked_until = to_naive(next_midnight_utc)
             elif status_type == "vacation" or status_type == "absence":
-                tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                alarm_blocked_until = to_naive(tomorrow)
-                status_auto_reset_date = to_naive(tomorrow)
+                next_midnight_utc = next_seoul_midnight_utc(now_local)
+                alarm_blocked_until = to_naive(next_midnight_utc)
+                status_auto_reset_date = to_naive(next_midnight_utc)
 
             update_values = {
                 "status_type": status_type,
@@ -1596,6 +1607,8 @@ class DBService:
         async with AsyncSessionLocal() as session:
             now = utcnow()
             now_naive = to_naive(now)
+            now_local = now_seoul()
+            today_local = now_local.date()
             
             # status_auto_reset_date가 현재 시간 이전인 학생들 조회
             result = await session.execute(
@@ -1604,9 +1617,41 @@ class DBService:
                 .where(Student.status_auto_reset_date <= now_naive)
             )
             students_to_reset = result.scalars().all()
-            
-            if students_to_reset:
-                student_ids = [s.id for s in students_to_reset]
+
+            student_ids_to_reset = {s.id for s in students_to_reset}
+
+            # 보정: 서울 기준 날짜가 지났으면 휴가/결석 상태를 해제
+            if True:
+                result = await session.execute(
+                    select(Student)
+                    .where(Student.status_type.in_(["vacation", "absence"]))
+                    .where(
+                        (Student.status_set_at.isnot(None)) | (Student.status_end_date.isnot(None))
+                    )
+                )
+                candidates = result.scalars().all()
+
+                for student in candidates:
+                    if student.id in student_ids_to_reset:
+                        continue
+                    end_date = student.status_end_date.date() if student.status_end_date else None
+                    if end_date is not None:
+                        if end_date < today_local:
+                            student_ids_to_reset.add(student.id)
+                        continue
+
+                    if student.status_set_at:
+                        status_set_utc = (
+                            student.status_set_at
+                            if student.status_set_at.tzinfo
+                            else student.status_set_at.replace(tzinfo=timezone.utc)
+                        )
+                        status_set_local_date = status_set_utc.astimezone(SEOUL_TZ).date()
+                        if status_set_local_date < today_local:
+                            student_ids_to_reset.add(student.id)
+
+            if student_ids_to_reset:
+                student_ids = list(student_ids_to_reset)
                 await session.execute(
                     update(Student)
                     .where(Student.id.in_(student_ids))
@@ -1615,12 +1660,15 @@ class DBService:
                         status_set_at=None,
                         alarm_blocked_until=None,
                         status_auto_reset_date=None,
+                        status_reason=None,
+                        status_end_date=None,
+                        status_protected=False,
                         updated_at=now_naive
                     )
                 )
                 await session.commit()
             
-            return len(students_to_reset)
+            return len(student_ids_to_reset)
     
     @staticmethod
     async def is_alarm_blocked(student_id: int) -> bool:

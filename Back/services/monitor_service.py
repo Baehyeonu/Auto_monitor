@@ -42,6 +42,7 @@ class MonitorService:
         self.start_time = None
         self.warmup_minutes = 1
         self.last_lunch_check = None
+        self.last_lunch_reset_date: Optional[str] = None
         self.last_class_check = None  # 수업 시작/종료 감지용
         self.daily_reset_time = self._parse_daily_reset_time(config.DAILY_RESET_TIME)
         self.last_daily_reset_date: Optional[str] = None
@@ -180,12 +181,11 @@ class MonitorService:
         now = now_seoul()  # 서울 시간 사용
         current_time = now.time()
 
-        try:
-            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
-            class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
-            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
-        except ValueError:
+        class_start = self._parse_time_value(config.CLASS_START_TIME, "CLASS_START_TIME")
+        class_end = self._parse_time_value(config.CLASS_END_TIME, "CLASS_END_TIME")
+        lunch_start = self._parse_time_value(config.LUNCH_START_TIME, "LUNCH_START_TIME")
+        lunch_end = self._parse_time_value(config.LUNCH_END_TIME, "LUNCH_END_TIME")
+        if not class_start or not class_end or not lunch_start or not lunch_end:
             return False
 
         if current_time < class_start:
@@ -204,12 +204,12 @@ class MonitorService:
         """수업/점심 시간 이벤트 체크 (모니터링 활성화 여부와 무관하게 실행)"""
         current_time = now.strftime("%H:%M")
         current_time_obj = now.time()
+        today_str = now.strftime("%Y-%m-%d")
         
         # 수업 시작/종료 감지
-        try:
-            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
-            class_end = datetime.strptime(config.CLASS_END_TIME, "%H:%M").time()
-            
+        class_start = self._parse_time_value(config.CLASS_START_TIME, "CLASS_START_TIME")
+        class_end = self._parse_time_value(config.CLASS_END_TIME, "CLASS_END_TIME")
+        if class_start and class_end:
             # 수업 시작 감지
             if current_time_obj >= class_start and self.last_class_check != "in_class":
                 if current_time_obj < class_end:
@@ -230,14 +230,11 @@ class MonitorService:
                     message=f"수업이 종료되었습니다. ({current_time})"
                 )
                 self.last_class_check = "after_class"
-        except ValueError:
-            pass
 
         # 점심 시간 시작/종료 감지
-        try:
-            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
-            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
-
+        lunch_start = self._parse_time_value(config.LUNCH_START_TIME, "LUNCH_START_TIME")
+        lunch_end = self._parse_time_value(config.LUNCH_END_TIME, "LUNCH_END_TIME")
+        if lunch_start and lunch_end:
             # 점심 시간인지 확인 (시작 시간 이상, 종료 시간 미만)
             is_lunch_time = lunch_start <= current_time_obj < lunch_end
 
@@ -252,18 +249,18 @@ class MonitorService:
                 )
 
             # 점심 종료 감지 (시작 로그 유무와 무관하게 하루 1회만 리셋)
-            if current_time_obj >= lunch_end and self.last_lunch_check != "after_lunch":
-                from database.db_service import utcnow
-                await self.db_service.reset_camera_off_timers(utcnow(), joined_student_ids=None)
-                self.last_lunch_check = "after_lunch"
-                await manager.broadcast_system_log(
-                    level="info",
-                    source="system",
-                    event_type="lunch_end",
-                    message=f"점심 시간이 종료되었습니다. ({current_time})"
-                )
-        except ValueError:
-            pass
+            if current_time_obj >= lunch_end:
+                if self.last_lunch_check != "after_lunch" or self.last_lunch_reset_date != today_str:
+                    from database.db_service import utcnow
+                    await self.db_service.reset_camera_off_timers(utcnow(), joined_student_ids=None)
+                    self.last_lunch_check = "after_lunch"
+                    self.last_lunch_reset_date = today_str
+                    await manager.broadcast_system_log(
+                        level="info",
+                        source="system",
+                        event_type="lunch_end",
+                        message=f"점심 시간이 종료되었습니다. ({current_time})"
+                    )
 
     async def _check_not_joined_students(self, joined_today: set[int]):
         """수업 시작 이후 미접속 학생을 미접속 상태로 표시"""
@@ -330,14 +327,12 @@ class MonitorService:
             return
 
         # 점심 시간인지 확인 (시간 객체로 비교)
-        try:
-            lunch_start = datetime.strptime(config.LUNCH_START_TIME, "%H:%M").time()
-            lunch_end = datetime.strptime(config.LUNCH_END_TIME, "%H:%M").time()
+        lunch_start = self._parse_time_value(config.LUNCH_START_TIME, "LUNCH_START_TIME")
+        lunch_end = self._parse_time_value(config.LUNCH_END_TIME, "LUNCH_END_TIME")
+        if lunch_start and lunch_end:
             is_lunch_time = lunch_start <= current_time_obj < lunch_end
             if is_lunch_time:
                 return
-        except ValueError:
-            pass
 
         joined_today = self.slack_listener.get_joined_students_today() if self.slack_listener else set()
 
@@ -359,14 +354,12 @@ class MonitorService:
 
         # 수업 시작 시간 계산 (수업 시작 전 입장한 학생은 수업 시작 시간부터 카운트)
         class_start_time_utc = None
-        try:
-            class_start = datetime.strptime(config.CLASS_START_TIME, "%H:%M").time()
+        class_start = self._parse_time_value(config.CLASS_START_TIME, "CLASS_START_TIME")
+        if class_start:
             today_seoul = now_seoul().date()
             class_start_dt = datetime.combine(today_seoul, class_start)
             class_start_dt_seoul = class_start_dt.replace(tzinfo=SEOUL_TZ)
             class_start_time_utc = class_start_dt_seoul.astimezone(timezone.utc)
-        except:
-            pass
 
         for student in students:
             if not student.discord_id:
@@ -628,13 +621,23 @@ class MonitorService:
 
     def _parse_daily_reset_time(self, time_str: Optional[str]) -> Optional[time]:
         """환경 변수 문자열을 time 객체로 변환"""
+        return self._parse_time_value(time_str, "DAILY_RESET_TIME")
+
+    def _parse_time_value(self, time_str: Optional[str], label: str) -> Optional[time]:
+        """'HH:MM' 또는 'HH:MM:SS' 형식 문자열을 time 객체로 변환"""
         if not time_str:
             return None
-        try:
-            return datetime.strptime(time_str, "%H:%M").time()
-        except ValueError:
-            print(f"⚠️ DAILY_RESET_TIME 형식이 잘못되었습니다. 'HH:MM' 형식으로 설정해주세요. (현재 값: {time_str})")
-            return None
+        time_value = str(time_str).strip()
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(time_value, fmt).time()
+            except ValueError:
+                continue
+        print(
+            f"⚠️ {label} 형식이 잘못되었습니다. "
+            f"'HH:MM' 또는 'HH:MM:SS' 형식으로 설정해주세요. (현재 값: {time_str})"
+        )
+        return None
 
     async def _check_startup_reset(self):
         """프로그램 시작 시 일일 초기화 확인 및 실행 (재시작 시 이전 상태 복원)"""
@@ -745,6 +748,7 @@ class MonitorService:
 
             # 일일 초기화 시 수업/점심 로그 상태도 리셋
             self.last_lunch_check = None
+            self.last_lunch_reset_date = None
             self.last_class_check = None
 
             self.is_resetting = False

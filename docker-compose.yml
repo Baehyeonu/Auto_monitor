@@ -12,7 +12,8 @@ services:
       - ./Back/data:/app/data
       - ./Back/.env:/app/.env
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///data/students.db
+      # NOTE: SQLite absolute path needs four slashes (/// is relative)
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/students.db
       - TZ=Asia/Seoul
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
@@ -41,4 +42,3 @@ services:
 networks:
   monitor_network:
     driver: bridge
-
